@@ -144,9 +144,15 @@ export function GraveStatusView({ me, selected, onGoToMap }) {
 	const selectedKey = selected ? recordKey(selected) : ''
 
 	return (
-		<div className="space-y-2">
-			<div className="text-sm font-semibold text-[color:var(--text-h)]">Estado actual</div>
-			<div className="space-y-2">
+		<div className="client-status-view">
+			<div className="client-section-heading">
+				<div>
+					<div className="ui-kicker">Seguimiento</div>
+					<h2 className="mt-1 text-lg font-semibold text-[color:var(--text-h)]">Estado actual</h2>
+				</div>
+				<div className="client-section-heading__meta">{rows.length} registros</div>
+			</div>
+			<div className="client-status-list">
 				{rows.map((r) => {
 					const key = recordKey(r)
 					const isActive = selectedKey && key && selectedKey === key
@@ -163,14 +169,18 @@ export function GraveStatusView({ me, selected, onGoToMap }) {
 						<div
 							key={key || String(r.id || Math.random())}
 							className={
-								'ui-card rounded-md p-4 ' +
-								(isActive ? 'border-[color:var(--accent-border)] bg-[color:var(--surface-2)]' : '')
+								'client-status-card ' +
+								(isActive ? 'client-status-card--active' : '')
 							}
 						>
-							<div className="flex flex-wrap items-start justify-between gap-3">
-								<div>
+							<div className="client-status-card__head">
+								<div className="client-record-card__avatar" aria-hidden="true">
+									{String(displayName || '?').slice(0, 1).toUpperCase()}
+								</div>
+								<div className="min-w-0">
 									<div className="ui-kicker">Difunto</div>
-									<div className="mt-0.5 text-sm font-semibold text-[color:var(--text-h)]">{displayName}</div>
+									<div className="mt-0.5 truncate text-base font-semibold text-[color:var(--text-h)]">{displayName}</div>
+									<div className="mt-1 text-xs text-[color:var(--muted)]">{r.reservation_code || 'Reserva sin código'}</div>
 								</div>
 								<div className="flex flex-wrap items-center gap-2">
 									<StatusPill tone="accent">Reserva: {reservationStatus}</StatusPill>
@@ -180,27 +190,42 @@ export function GraveStatusView({ me, selected, onGoToMap }) {
 								</div>
 							</div>
 
-							<div
-								className="mt-3 grid items-stretch gap-2 md:grid-cols-2"
-								style={{ gridAutoRows: '1fr' }}
-							>
-								<div className="ui-card ui-card--tight h-full rounded-md">
-									<div className="ui-kicker">Tumba</div>
-									<div className="mt-0.5 text-sm font-semibold text-[color:var(--text-h)]">{r.grave_code || '—'}</div>
-									<div className="mt-1 text-xs text-[color:var(--text)]">Estado: {graveStatus}</div>
+							<div className="client-status-card__body">
+								<div className="client-info-tile">
+									<span>Tumba</span>
+									<strong>{r.grave_code || '—'}</strong>
+									<small>Estado: {graveStatus}</small>
 								</div>
-								<div className="ui-card ui-card--tight h-full rounded-md">
-									<div className="ui-kicker">Ubicación</div>
-									<div className="mt-0.5 text-sm font-semibold text-[color:var(--text-h)]">{r.sector_name || '—'}</div>
-									<div className="mt-1 text-xs text-[color:var(--text)]">
+								<div className="client-info-tile">
+									<span>Ubicación</span>
+									<strong>{r.sector_name || '—'}</strong>
+									<small>
 										{r.row_number != null ? `Fila ${r.row_number}` : 'Fila —'}
 										{r.col_number != null ? ` / Col ${r.col_number}` : ' / Col —'}
-									</div>
+									</small>
 								</div>
 							</div>
 
-							<div className="mt-3 flex flex-wrap items-center justify-between gap-2">
-								<div className="ui-kicker">Mapa</div>
+							<div className="client-status-steps">
+								<div className="client-status-step client-status-step--done">
+									<span />
+									Reserva
+								</div>
+								<div className={'client-status-step ' + (hasPayment ? 'client-status-step--done' : '')}>
+									<span />
+									Pago
+								</div>
+								<div className={'client-status-step ' + (String(r.grave_status || '') === 'occupied' ? 'client-status-step--done' : '')}>
+									<span />
+									Parcela
+								</div>
+							</div>
+
+							<div className="client-status-card__footer">
+								<div>
+									<div className="ui-kicker">Mapa</div>
+									<div className="mt-1 text-xs text-[color:var(--muted)]">Revisa la ubicación visual de esta parcela.</div>
+								</div>
 								<button
 									type="button"
 									onClick={() => onGoToMap?.()}

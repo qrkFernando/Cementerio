@@ -34,6 +34,7 @@ export function AdminPanel({ me }) {
 	const [lastRefreshAt, setLastRefreshAt] = useState(null)
 
 	const [sectors, setSectors] = useState([])
+	const [branches, setBranches] = useState([])
 	const [graveTypes, setGraveTypes] = useState([])
 	const [graves, setGraves] = useState([])
 	const [employees, setEmployees] = useState([])
@@ -51,6 +52,65 @@ export function AdminPanel({ me }) {
 	const canReports = isAdmin || perms.includes('reports')
 	const canEmployees = isAdmin
 
+	const moduleMeta = {
+		dashboard: {
+			code: 'IN',
+			label: 'Inicio',
+			shortLabel: 'Inicio',
+			description: 'Indicadores generales, actividad por sede y reportes rápidos.',
+			value: graves.length + reservations.length + payments.length,
+			hint: `${branches.length} sedes activas`,
+		},
+		graves: {
+			code: 'TU',
+			label: 'Tumbas',
+			shortLabel: 'Tumbas',
+			description: 'Sectores, parcelas, precios, ubicación y disponibilidad operativa.',
+			value: graves.length,
+			hint: `${sectors.length} sectores · ${graveTypes.length} tipos`,
+		},
+		deceased: {
+			code: 'DI',
+			label: 'Difuntos',
+			shortLabel: 'Difuntos',
+			description: 'Registro, trazabilidad y asociación de difuntos con reservas.',
+			value: deceased.length,
+			hint: 'Fichas registradas',
+		},
+		reservations: {
+			code: 'RE',
+			label: 'Reservas',
+			shortLabel: 'Reservas',
+			description: 'Solicitudes, aprobación, estados y seguimiento del cliente.',
+			value: reservations.length,
+			hint: `${reservations.filter((r) => r?.status === 'pending').length} pendientes`,
+		},
+		payments: {
+			code: 'PA',
+			label: 'Pagos',
+			shortLabel: 'Pagos',
+			description: 'Comprobantes, estados de pago y conciliación administrativa.',
+			value: payments.length,
+			hint: `${payments.filter((p) => p?.status === 'paid').length} pagados`,
+		},
+		employees: {
+			code: 'EM',
+			label: 'Empleados',
+			shortLabel: 'Equipo',
+			description: 'Usuarios internos, permisos y acceso por módulo.',
+			value: employees.length,
+			hint: 'Cuentas del sistema',
+		},
+		reports: {
+			code: 'RP',
+			label: 'Reportes',
+			shortLabel: 'Reportes',
+			description: 'Lectura ejecutiva de ingresos, reservas y operación.',
+			value: reservations.length + payments.length,
+			hint: 'Datos consolidados',
+		},
+	}
+
 	const allowedModules = (() => {
 		if (isAdmin) {
 			return ['dashboard', 'graves', 'deceased', 'reservations', 'payments', 'employees', 'reports']
@@ -64,9 +124,18 @@ export function AdminPanel({ me }) {
 		return list
 	})()
 
+	const activeMeta = moduleMeta[activeModule] || moduleMeta[allowedModules[0]] || moduleMeta.dashboard
+	const healthItems = [
+		{ label: 'Sedes', value: branches.length, hint: 'operación' },
+		{ label: 'Parcelas', value: graves.length, hint: `${graves.filter((g) => g?.status === 'available').length} disponibles` },
+		{ label: 'Reservas', value: reservations.length, hint: `${reservations.filter((r) => r?.status === 'confirmed').length} confirmadas` },
+		{ label: 'Pagos', value: payments.length, hint: `${payments.filter((p) => p?.status === 'pending').length} pendientes` },
+	]
+
 	async function refreshAll() {
 		const calls = []
 		if (isAdmin || canGraves) {
+			calls.push(['branches', api('/api/admin/branches')])
 			calls.push(['sectors', api('/api/admin/sectors')])
 			calls.push(['graveTypes', api('/api/admin/grave-types')])
 			calls.push(['graves', api('/api/admin/graves')])
@@ -91,6 +160,7 @@ export function AdminPanel({ me }) {
 			const r = results[i]
 			if (!r?.ok) continue
 			if (key === 'sectors') setSectors(Array.isArray(r.data?.sectors) ? r.data.sectors : [])
+			if (key === 'branches') setBranches(Array.isArray(r.data?.branches) ? r.data.branches : [])
 			if (key === 'graveTypes') setGraveTypes(Array.isArray(r.data?.graveTypes) ? r.data.graveTypes : [])
 			if (key === 'graves') setGraves(Array.isArray(r.data?.graves) ? r.data.graves : [])
 			if (key === 'employees') setEmployees(Array.isArray(r.data?.employees) ? r.data.employees : [])
@@ -143,72 +213,131 @@ export function AdminPanel({ me }) {
 	}
 
 	return (
-		<div className="mt-8">
-			<div className="flex items-start justify-between gap-3">
-				<div>
-					<h2 className="text-sm font-semibold text-[color:var(--text-h)]">Administrador</h2>
-					<div className="mt-1 text-xs text-[color:var(--text)]">
-						{lastRefreshAt ? `Actualizado: ${lastRefreshAt.toLocaleString()}` : '—'}
+		<div className="admin-shell">
+			<div className="admin-hero">
+				<div className="admin-hero__content">
+					<div className="ui-kicker">Panel administrativo</div>
+					<h2 className="mt-2 text-2xl font-semibold text-white md:text-3xl">Centro de control</h2>
+					<div className="mt-2 max-w-3xl text-sm text-white/78">
+						Gestiona la operación del cementerio con módulos de seguimiento, registros, aprobaciones y reportes.
+					</div>
+					<div className="mt-4 flex flex-wrap gap-2">
+						<span className="admin-hero__pill">{me?.email || 'Administrador'}</span>
+						<span className="admin-hero__pill">{isAdmin ? 'Acceso total' : 'Acceso por permisos'}</span>
+						<span className="admin-hero__pill">{lastRefreshAt ? `Actualizado ${lastRefreshAt.toLocaleTimeString()}` : 'Esperando datos'}</span>
 					</div>
 				</div>
-				<button
-					onClick={onManualRefresh}
-					disabled={bootLoading}
-					className="rounded-md border border-[color:var(--border)] px-3 py-2 text-sm text-[color:var(--text-h)] hover:bg-[color:var(--hover)] transition-colors disabled:opacity-50"
-				>
-					Actualizar
-				</button>
+				<div className="admin-hero__panel">
+					<div className="text-xs font-semibold uppercase tracking-[0.18em] text-white/70">Módulo activo</div>
+					<div className="mt-3 flex items-center gap-3">
+						<div className="admin-module-badge admin-module-badge--hero">{activeMeta.code}</div>
+						<div>
+							<div className="text-lg font-semibold text-white">{activeMeta.label}</div>
+							<div className="text-xs text-white/70">{activeMeta.hint}</div>
+						</div>
+					</div>
+					<button
+						onClick={onManualRefresh}
+						disabled={bootLoading}
+						className="mt-4 w-full rounded-md border border-white/20 bg-white/10 px-3 py-2 text-sm font-semibold text-white hover:bg-white/15 disabled:opacity-50"
+					>
+						{bootLoading ? 'Actualizando…' : 'Actualizar datos'}
+					</button>
+				</div>
 			</div>
 
 			{bootLoading && <p className="mt-3 text-sm text-[color:var(--text)]">Cargando…</p>}
 			{bootError && <p className="mt-3 text-sm text-red-600">{bootError}</p>}
 
 			{!bootLoading && !bootError && (
-				<div className="mt-4 flex flex-col gap-3 md:flex-row">
-					<aside className="rounded-md border border-[color:var(--border)] p-2 md:w-60">
-						<div className="px-2 py-2 text-xs font-medium text-[color:var(--text)]">Módulos</div>
+				<div className="mt-4 grid gap-4 lg:grid-cols-[280px_1fr]">
+					<aside className="admin-sidebar">
+						<div className="px-2 py-2">
+							<div className="ui-kicker">Módulos</div>
+							<div className="mt-1 text-sm font-semibold text-[color:var(--text-h)]">Navegación operativa</div>
+						</div>
 						<div className="space-y-1">
 							{(isAdmin ? true : false) && (
 								<SidebarButton active={activeModule === 'dashboard'} onClick={() => setActiveModule('dashboard')}>
-									Inicio (estadísticas)
+									<span className="admin-sidebar-button__code">IN</span>
+									<span>Inicio</span>
+									<span className="admin-sidebar-button__metric">{moduleMeta.dashboard.value}</span>
 								</SidebarButton>
 							)}
 							{canGraves && (
 								<SidebarButton active={activeModule === 'graves'} onClick={() => setActiveModule('graves')}>
-									Gestionar tumbas
+									<span className="admin-sidebar-button__code">TU</span>
+									<span>Tumbas</span>
+									<span className="admin-sidebar-button__metric">{moduleMeta.graves.value}</span>
 								</SidebarButton>
 							)}
 							{canDeceased && (
 								<SidebarButton active={activeModule === 'deceased'} onClick={() => setActiveModule('deceased')}>
-									Gestionar difuntos
+									<span className="admin-sidebar-button__code">DI</span>
+									<span>Difuntos</span>
+									<span className="admin-sidebar-button__metric">{moduleMeta.deceased.value}</span>
 								</SidebarButton>
 							)}
 							{canReservations && (
 								<SidebarButton active={activeModule === 'reservations'} onClick={() => setActiveModule('reservations')}>
-									Gestionar reservas
+									<span className="admin-sidebar-button__code">RE</span>
+									<span>Reservas</span>
+									<span className="admin-sidebar-button__metric">{moduleMeta.reservations.value}</span>
 								</SidebarButton>
 							)}
 							{canPayments && (
 								<SidebarButton active={activeModule === 'payments'} onClick={() => setActiveModule('payments')}>
-									Gestionar pagos
+									<span className="admin-sidebar-button__code">PA</span>
+									<span>Pagos</span>
+									<span className="admin-sidebar-button__metric">{moduleMeta.payments.value}</span>
 								</SidebarButton>
 							)}
 							{canEmployees && (
 								<SidebarButton active={activeModule === 'employees'} onClick={() => setActiveModule('employees')}>
-									Gestionar empleados
+									<span className="admin-sidebar-button__code">EM</span>
+									<span>Equipo</span>
+									<span className="admin-sidebar-button__metric">{moduleMeta.employees.value}</span>
 								</SidebarButton>
 							)}
 							{canReports && (
 								<SidebarButton active={activeModule === 'reports'} onClick={() => setActiveModule('reports')}>
-									Reporte
+									<span className="admin-sidebar-button__code">RP</span>
+									<span>Reportes</span>
+									<span className="admin-sidebar-button__metric">{moduleMeta.reports.value}</span>
 								</SidebarButton>
 							)}
 						</div>
+						<div className="mt-4 grid gap-2">
+							{healthItems.map((item) => (
+								<div key={item.label} className="admin-sidebar-mini">
+									<div>
+										<div className="text-xs text-[color:var(--muted)]">{item.label}</div>
+										<div className="text-[11px] text-[color:var(--text)]">{item.hint}</div>
+									</div>
+									<div className="text-lg font-semibold text-[color:var(--text-h)]">{item.value}</div>
+								</div>
+							))}
+						</div>
 					</aside>
 
-					<section className="flex-1">
+					<section className="admin-module-stage">
+						<div className="admin-module-header">
+							<div className="flex items-center gap-3">
+								<div className="admin-module-badge">{activeMeta.code}</div>
+								<div>
+									<div className="text-xl font-semibold text-[color:var(--text-h)]">{activeMeta.label}</div>
+									<div className="mt-1 text-sm text-[color:var(--text)]">{activeMeta.description}</div>
+								</div>
+							</div>
+							<div className="admin-module-header__metric">
+								<div className="text-xs text-[color:var(--muted)]">Registros</div>
+								<div className="text-2xl font-semibold text-[color:var(--text-h)]">{activeMeta.value}</div>
+							</div>
+						</div>
+						<div className="mt-4">
 						{activeModule === 'dashboard' && isAdmin && (
 							<AdminDashboardModule
+								branches={branches}
 								sectors={sectors}
 								graves={graves}
 								deceased={deceased}
@@ -219,7 +348,7 @@ export function AdminPanel({ me }) {
 						)}
 
 						{activeModule === 'graves' && canGraves && (
-							<AdminGravesModule sectors={sectors} graveTypes={graveTypes} graves={graves} onRefresh={refreshAll} />
+							<AdminGravesModule branches={branches} sectors={sectors} graveTypes={graveTypes} graves={graves} onRefresh={refreshAll} />
 						)}
 
 						{activeModule === 'deceased' && canDeceased && (
@@ -247,6 +376,7 @@ export function AdminPanel({ me }) {
 								No tienes permisos asignados. Pídele a un administrador que te habilite módulos.
 							</div>
 						)}
+						</div>
 					</section>
 				</div>
 			)}

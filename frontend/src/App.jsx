@@ -8,6 +8,32 @@ import { Navbar } from './modules/layout/Navbar'
 import { Panel } from './modules/layout/Panel'
 import { TabButton } from './modules/layout/TabButton'
 
+function WhatsAppConsultButton() {
+  const phone = import.meta.env.VITE_WHATSAPP_PHONE || '992006050'
+  const message = 'Hola, quisiera hacer una consulta sobre reservas en el cementerio.'
+  const href = `https://wa.me/${phone}?text=${encodeURIComponent(message)}`
+
+  return (
+    <a
+      className="whatsapp-float"
+      href={href}
+      target="_blank"
+      rel="noreferrer"
+      aria-label="Consultar por WhatsApp"
+    >
+      <span className="whatsapp-float__icon" aria-hidden="true">
+        <svg viewBox="0 0 32 32" focusable="false">
+          <path d="M16.02 3.2c-7 0-12.7 5.57-12.7 12.43 0 2.18.58 4.31 1.69 6.18L3.2 28.8l7.24-1.85a12.95 12.95 0 0 0 5.58 1.26c7 0 12.7-5.58 12.7-12.44S23.02 3.2 16.02 3.2Zm0 22.9c-1.82 0-3.6-.47-5.15-1.37l-.37-.22-4.28 1.1 1.08-4.08-.25-.4a10.17 10.17 0 0 1-1.6-5.5c0-5.7 4.75-10.33 10.57-10.33s10.57 4.63 10.57 10.33S21.84 26.1 16.02 26.1Zm5.8-7.73c-.32-.16-1.9-.92-2.2-1.02-.29-.1-.5-.16-.72.16-.21.31-.82 1.02-1.01 1.23-.18.2-.37.23-.69.08-.32-.16-1.34-.49-2.56-1.55a9.42 9.42 0 0 1-1.77-2.16c-.18-.31-.02-.48.14-.64.14-.14.32-.37.48-.55.16-.18.21-.31.32-.52.1-.21.05-.39-.03-.55-.08-.16-.72-1.7-.98-2.33-.26-.61-.52-.53-.72-.54h-.61c-.21 0-.55.08-.85.39-.29.31-1.11 1.06-1.11 2.6s1.14 3.02 1.3 3.23c.16.21 2.25 3.36 5.44 4.71.76.32 1.35.51 1.81.65.76.24 1.45.21 2 .13.61-.09 1.9-.76 2.16-1.49.27-.73.27-1.36.19-1.49-.08-.13-.29-.21-.61-.36Z" />
+        </svg>
+      </span>
+      <span className="whatsapp-float__copy">
+        <span>Consulta rápida</span>
+        <strong>WhatsApp</strong>
+      </span>
+    </a>
+  )
+}
+
 export default function App() {
   const [me, setMe] = useState(null)
   const [bootLoading, setBootLoading] = useState(true)
@@ -353,7 +379,7 @@ export default function App() {
         onLogout={logout}
       />
 
-      <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-6">
+      <main className="mx-auto w-full max-w-[92rem] flex-1 px-3 py-4 sm:px-4 lg:px-6">
         {bootLoading && <p className="mt-6 text-sm text-[color:var(--text)]">Cargando…</p>}
         {bootError && <p className="mt-6 text-sm text-red-600">{bootError}</p>}
 
@@ -436,6 +462,7 @@ export default function App() {
       </main>
 
       <Footer />
+      <WhatsAppConsultButton />
     </div>
   )
 }

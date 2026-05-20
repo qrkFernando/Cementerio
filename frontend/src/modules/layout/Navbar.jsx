@@ -264,7 +264,7 @@ export function Navbar({
 									<span aria-hidden="true" className="mr-2">
 										🪦
 									</span>
-									QRKATA
+									<span className="bg-[var(--btn-gradient)] bg-clip-text text-transparent">QRKATA</span>
 								</div>
 								<div className="text-xs text-[color:var(--text)]">Cementerio digital</div>
 							</div>
@@ -436,7 +436,7 @@ export function Navbar({
 				</div>
 
 				{/* Fila 2 */}
-				<div className="hidden pb-3 md:block">
+				<div className="hidden border-t border-[color:var(--border)] pb-4 pt-3 md:block">
 					<div className="flex flex-wrap items-center justify-center gap-1">
 						{tabs.map((t) => {
 							if (t.id !== 'profile') {

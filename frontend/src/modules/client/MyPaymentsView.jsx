@@ -31,6 +31,18 @@ function prettyStatus(status) {
 	return map[s] || s
 }
 
+function statusPillClass(status) {
+	switch (String(status || '')) {
+		case 'paid':
+			return 'border-[color:var(--az3)] bg-[color:var(--az3)] text-white'
+		case 'void':
+			return 'border-[color:var(--az1)] bg-[color:var(--az1)] text-white'
+		case 'pending':
+		default:
+			return 'border-[color:var(--accent-border)] bg-[color:var(--accent-bg)] text-[color:var(--text-h)]'
+	}
+}
+
 function paymentTypeLabel(name) {
 	const key = String(name || '').trim()
 	if (!key) return '—'
@@ -106,6 +118,15 @@ export function MyPaymentsView({ me, onLogin, intent, onIntentHandled, filterSee
 		return items
 			.filter((p) => p.status === 'paid')
 			.reduce((sum, p) => sum + Number(p.amount_cents || 0), 0)
+	}, [items])
+
+	const paymentStats = useMemo(() => {
+		return {
+			total: items.length,
+			paid: items.filter((p) => p.status === 'paid').length,
+			pending: items.filter((p) => p.status === 'pending').length,
+			voided: items.filter((p) => p.status === 'void').length,
+		}
 	}, [items])
 
 	useEffect(() => {
@@ -360,15 +381,33 @@ export function MyPaymentsView({ me, onLogin, intent, onIntentHandled, filterSee
 	}
 
 	return (
-		<div className="space-y-3">
-			<div className="flex flex-wrap items-center justify-between gap-2">
-				<div className="text-sm font-semibold text-[color:var(--text-h)]">Mis pagos</div>
-				<div className="text-xs text-[color:var(--text)]">
-					Total pagado: <span className="font-semibold text-[color:var(--text-h)]">{formatMoney(paidTotal, 'PEN')}</span>
+		<div className="client-ledger-view">
+			<div className="client-ledger-head">
+				<div>
+					<div className="ui-kicker">Comprobantes</div>
+					<h2 className="mt-1 text-lg font-semibold text-[color:var(--text-h)]">Mis pagos</h2>
+					<div className="mt-1 text-xs text-[color:var(--muted)]">Gestiona pagos registrados, boletas y validaciones.</div>
+				</div>
+				<div className="client-ledger-total">
+					<small>Total pagado</small>
+					<strong>{formatMoney(paidTotal, 'PEN')}</strong>
 				</div>
 			</div>
 
-			<div className="flex flex-wrap items-center gap-2">
+			<div className="client-ledger-stats">
+				<div><span>{paymentStats.total}</span><small>Total</small></div>
+				<div><span>{paymentStats.paid}</span><small>Pagados</small></div>
+				<div><span>{paymentStats.pending}</span><small>Pendientes</small></div>
+				<div><span>{paymentStats.voided}</span><small>Anulados</small></div>
+			</div>
+
+			<div className="client-ledger-toolbar">
+				<input
+					value={filterQ}
+					onChange={(e) => setFilterQ(e.target.value)}
+					className="w-full rounded-md border border-[color:var(--border)] bg-transparent px-3 py-2 text-sm text-[color:var(--text-h)]"
+					placeholder="Filtrar por reserva, tumba, tipo o estado"
+				/>
 				<button
 					onClick={() => {
 						setCreateMsg('')
@@ -377,10 +416,13 @@ export function MyPaymentsView({ me, onLogin, intent, onIntentHandled, filterSee
 						setSummaryError('')
 						setPayOpen(true)
 					}}
-					className="rounded-md bg-[color:var(--accent)] px-3 py-2 text-sm font-medium text-[color:var(--on-accent)]"
+					className="rounded-md bg-[color:var(--accent)] px-3 py-2 text-sm font-semibold text-[color:var(--on-accent)]"
 				>
-					Pagar
+					Registrar pago
 				</button>
+				<div className="client-ledger-toolbar__count">{filteredItems.length} visibles</div>
+			</div>
+			<div className="flex flex-wrap items-center gap-2">
 				{createMsg && <div className="text-sm text-[color:var(--text)]">{createMsg}</div>}
 			</div>
 
@@ -396,11 +438,12 @@ export function MyPaymentsView({ me, onLogin, intent, onIntentHandled, filterSee
 			)}
 
 			{filteredItems.length > 0 && (
-				<div className="overflow-x-auto rounded-md border border-[color:var(--border)]">
+				<div className="client-ledger-table overflow-x-auto">
 					<table className="min-w-full text-left text-sm">
-						<thead className="bg-[color:var(--surface-2)] text-xs text-[color:var(--text)]">
+						<thead className="bg-[color:var(--surface-2)] text-xs text-[color:var(--muted)]">
 							<tr>
 								<th className="px-3 py-2 font-medium">ID</th>
+								<th className="px-3 py-2 font-medium">Boleta</th>
 								<th className="px-3 py-2 font-medium">Reserva</th>
 								<th className="px-3 py-2 font-medium">Tumba</th>
 								<th className="px-3 py-2 font-medium">Tipo</th>
@@ -411,13 +454,40 @@ export function MyPaymentsView({ me, onLogin, intent, onIntentHandled, filterSee
 						</thead>
 						<tbody>
 							{filteredItems.map((p) => (
-								<tr key={p.id} className="border-t border-[color:var(--border)]">
+								<tr key={p.id} className="border-t border-[color:var(--border)] hover:bg-[color:var(--hover)]">
 									<td className="px-3 py-2 text-[color:var(--text)]">{p.id}</td>
-									<td className="px-3 py-2 text-[color:var(--text)]">{p.reservation_code || '—'}</td>
-									<td className="px-3 py-2 text-[color:var(--text)]">{p.grave_code || '—'}</td>
-									<td className="px-3 py-2 text-[color:var(--text)]">{p.payment_type_name || '—'}</td>
-									<td className="px-3 py-2 text-[color:var(--text)]">{formatMoney(p.amount_cents, p.currency)}</td>
-									<td className="px-3 py-2 text-[color:var(--text)]">{prettyStatus(p.status)}</td>
+									<td className="px-3 py-2 text-[color:var(--text)]">
+										<a
+											href={`/api/client/payments/${p.id}/receipt.pdf`}
+											target="_blank"
+											rel="noreferrer"
+											className="inline-flex items-center justify-center whitespace-nowrap rounded-md bg-red-600 px-2 py-1 text-xs font-semibold !text-white no-underline shadow-[var(--shadow)] ring-1 ring-red-700 hover:bg-red-700 hover:!text-white"
+											aria-label="Descargar boleta"
+										>
+											Descargar boleta
+										</a>
+										{p.receipt_code ? (
+											<div className="mt-1">
+												<span className="inline-flex items-center rounded-full bg-[color:var(--accent-bg)] px-2 py-0.5 text-[11px] font-semibold tracking-wide text-[color:var(--text-h)] ring-1 ring-[color:var(--accent-border)]">
+													{p.receipt_code}
+												</span>
+											</div>
+										) : null}
+									</td>
+									<td className="px-3 py-2 text-[color:var(--text)]"><span className="client-code-pill">{p.reservation_code || '—'}</span></td>
+									<td className="px-3 py-2 text-[color:var(--text)]"><span className="font-semibold text-[color:var(--text-h)]">{p.grave_code || '—'}</span></td>
+									<td className="px-3 py-2 text-[color:var(--text)]">{paymentTypeLabel(p.payment_type_name)}</td>
+									<td className="px-3 py-2 text-[color:var(--text)]"><span className="font-semibold text-[color:var(--text-h)]">{formatMoney(p.amount_cents, p.currency)}</span></td>
+									<td className="px-3 py-2 text-[color:var(--text)]">
+										<span
+											className={
+												'inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-semibold ' +
+												statusPillClass(p.status)
+											}
+										>
+											{prettyStatus(p.status)}
+										</span>
+									</td>
 									<td className="px-3 py-2 text-[color:var(--text)]">{formatDateTime(p.paid_at || p.created_at)}</td>
 								</tr>
 							))}

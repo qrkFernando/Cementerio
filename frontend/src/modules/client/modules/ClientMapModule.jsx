@@ -32,9 +32,78 @@ function recordKey(r) {
 
 
 export function ClientMapModule({ me, selected, onSelect }) {
+	const [cemOpen, setCemOpen] = useState(false)
+	const [cemEverOpened, setCemEverOpened] = useState(false)
+	const [cemLoading, setCemLoading] = useState(false)
+	const [cemError, setCemError] = useState('')
+	const [cemLocation, setCemLocation] = useState(null)
+	const [cemPinnedEmbedSrc, setCemPinnedEmbedSrc] = useState(null)
+	const [cemPinnedHref, setCemPinnedHref] = useState(null)
+
 	const [loading, setLoading] = useState(false)
 	const [items, setItems] = useState([])
 	const [error, setError] = useState('')
+
+	const cemeteryCoords = useMemo(() => {
+		const lat = cemLocation?.latitude != null ? Number(cemLocation.latitude) : null
+		const lng = cemLocation?.longitude != null ? Number(cemLocation.longitude) : null
+		return {
+			lat: Number.isFinite(lat) ? lat : null,
+			lng: Number.isFinite(lng) ? lng : null,
+		}
+	}, [cemLocation])
+
+	const cemeteryLabel = useMemo(() => {
+		const name = String(cemLocation?.name || '').trim()
+		const address = String(cemLocation?.address || '').trim()
+		return {
+			name: name || 'Cementerio',
+			address: address || '',
+		}
+	}, [cemLocation])
+
+	async function loadCemeteryLocationOnce() {
+		if (cemLocation || cemLoading) return cemLocation
+		setCemLoading(true)
+		setCemError('')
+		try {
+			const res = await api('/api/public/cemetery-location')
+			if (!res.ok) {
+				setCemError(res.data?.error || 'No se pudo cargar la ubicación del cementerio.')
+				return null
+			}
+			const next = res.data?.location || null
+			setCemLocation(next)
+			return next
+		} finally {
+			setCemLoading(false)
+		}
+	}
+
+	function pinEmbedFromLocation(loc) {
+		const lat = loc?.latitude != null ? Number(loc.latitude) : null
+		const lng = loc?.longitude != null ? Number(loc.longitude) : null
+		const hasCoords = Number.isFinite(lat) && Number.isFinite(lng)
+		const address = String(loc?.address || '').trim()
+		const q = hasCoords ? `${lat},${lng}` : address
+		if (!q) {
+			setCemPinnedEmbedSrc(null)
+			setCemPinnedHref(null)
+			return
+		}
+		setCemPinnedHref(`https://www.google.com/maps?q=${encodeURIComponent(q)}`)
+		setCemPinnedEmbedSrc(`https://www.google.com/maps?q=${encodeURIComponent(q)}&z=16&output=embed`)
+	}
+
+	async function toggleCemeteryMap() {
+		const next = !cemOpen
+		setCemOpen(next)
+		if (!next) return
+		if (!cemEverOpened) setCemEverOpened(true)
+		const loc = (await loadCemeteryLocationOnce()) || cemLocation || null
+		// Pinea el embed para evitar que cambie/re-cargue mientras el usuario navega.
+		pinEmbedFromLocation(loc)
+	}
 
 	useEffect(() => {
 		let cancelled = false
@@ -87,12 +156,113 @@ export function ClientMapModule({ me, selected, onSelect }) {
 	}, [grouped])
 
 	return (
-		<Panel className="p-0">
-			<div className="flex flex-col gap-0 lg:flex-row">
+		<Panel className="client-map-panel p-0">
+			<div className="client-map-hero">
+				<div className="client-map-hero__badge" aria-hidden="true">
+					<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+						<path d="M20 10c0 4.5-5 10-8 12-3-2-8-7.5-8-12a8 8 0 1 1 16 0Z" />
+						<circle cx="12" cy="10" r="3" />
+					</svg>
+				</div>
+				<div className="min-w-0">
+					<div className="ui-kicker">Mapa</div>
+					<div className="mt-1 text-xl font-semibold text-[color:var(--text-h)]">Ubicación y parcelas</div>
+					<div className="mt-1 text-sm text-[color:var(--text)]">Explora el cementerio, revisa tus registros y abre la ubicación general cuando la necesites.</div>
+				</div>
+				<div className="client-map-hero__stats">
+					<div>
+						<span>{grouped.length}</span>
+						<small>registros</small>
+					</div>
+					<div>
+						<span>{markers.length}</span>
+						<small>marcadores</small>
+					</div>
+				</div>
+			</div>
+
+			<div className="client-map-general">
+				<div className="client-map-location-card">
+					<div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+						<div>
+							<div className="ui-kicker">Ubicación</div>
+							<div className="mt-0.5 text-base font-semibold text-[color:var(--text-h)]">Mapa general del cementerio</div>
+							<div className="mt-1 text-xs text-[color:var(--text)]">
+								{cemLocation ? (
+									<>
+										<span className="font-medium text-[color:var(--text-h)]">{cemeteryLabel.name}</span>
+										{cemeteryLabel.address ? ` · ${cemeteryLabel.address}` : ''}
+										{cemeteryCoords.lat != null && cemeteryCoords.lng != null
+											? ` · ${cemeteryCoords.lat}, ${cemeteryCoords.lng}`
+											: ''}
+									</>
+								) : (
+									<>Muéstralo cuando lo necesites (no consume API si está oculto).</>
+								)}
+							</div>
+							{cemError ? <div className="mt-1 text-xs text-red-600">{cemError}</div> : null}
+						</div>
+
+						<div className="flex items-center justify-end gap-2">
+							<button
+								type="button"
+								onClick={toggleCemeteryMap}
+								className={
+									'inline-flex h-10 items-center rounded-md border px-3 text-sm font-medium ' +
+									(cemOpen
+										? 'border-[color:var(--accent-border)] bg-[color:var(--accent-bg)] text-[color:var(--text-h)]'
+										: 'border-[color:var(--border)] bg-[color:var(--surface)] text-[color:var(--text-h)] hover:bg-[color:var(--hover)]')
+								}
+							>
+								{cemOpen ? 'Ocultar mapa' : cemLoading ? 'Cargando…' : 'Mostrar mapa'}
+							</button>
+							{cemPinnedHref ? (
+								<a
+									href={cemPinnedHref}
+									target="_blank"
+									rel="noreferrer"
+									className="inline-flex h-10 items-center rounded-md bg-[color:var(--accent)] px-3 text-sm font-medium text-[color:var(--on-accent)]"
+								>
+									Abrir
+								</a>
+							) : null}
+						</div>
+					</div>
+
+					{cemEverOpened && cemPinnedEmbedSrc ? (
+						<div className={cemOpen ? 'mt-3' : 'mt-3 hidden'}>
+							<div className="overflow-hidden rounded-md border border-[color:var(--border)] bg-[color:var(--surface-2)]">
+								<iframe
+									title="Mapa general del cementerio"
+									src={cemPinnedEmbedSrc}
+									className="block h-[320px] w-full"
+									loading="lazy"
+									referrerPolicy="no-referrer-when-downgrade"
+									allowFullScreen
+								/>
+							</div>
+							<div className="mt-2 text-xs text-[color:var(--text)]">
+								Se carga una sola vez y luego solo se oculta.
+							</div>
+						</div>
+					) : cemEverOpened && cemOpen ? (
+						<div className="mt-3 text-sm text-[color:var(--text)]">
+							Aún no está configurada la ubicación general del cementerio.
+						</div>
+					) : null}
+				</div>
+			</div>
+
+			<div className="client-map-layout">
 				{/* Lista lateral */}
-				<div className="border-b border-[color:var(--border)] bg-[color:var(--surface)] p-3 lg:w-72 lg:border-b-0 lg:border-r">
-					<div className="text-sm font-semibold text-[color:var(--text-h)]">Difuntos</div>
-					<div className="mt-1 text-xs text-[color:var(--text)]">Marcados en el mapa con un color.</div>
+				<div className="client-map-sidebar">
+					<div className="client-map-sidebar__head">
+						<div>
+							<div className="text-sm font-semibold text-[color:var(--text-h)]">Difuntos</div>
+							<div className="mt-1 text-xs text-[color:var(--text)]">Marcados en el mapa con un color.</div>
+						</div>
+						<div className="client-map-sidebar__count">{grouped.length}</div>
+					</div>
 
 					{!me ? (
 						<div className="mt-3 text-sm text-[color:var(--text)]">Inicia sesión para ver tus difuntos.</div>
@@ -101,7 +271,7 @@ export function ClientMapModule({ me, selected, onSelect }) {
 					{me && error ? <div className="mt-3 text-sm text-red-600">{error}</div> : null}
 
 					{me && !loading && !error ? (
-						<div className="mt-3 space-y-2">
+						<div className="client-map-person-list">
 							{grouped.length === 0 ? (
 								<div className="text-sm text-[color:var(--text)]">Aún no tienes difuntos registrados en tu cuenta.</div>
 							) : (
@@ -117,18 +287,23 @@ export function ClientMapModule({ me, selected, onSelect }) {
 											type="button"
 											onClick={() => onSelect?.(r)}
 											className={
-												'flex w-full items-center gap-2 rounded-md border px-3 py-2 text-left text-sm hover:bg-[color:var(--hover)] ' +
+												'client-map-person ' +
 												(active
-													? 'border-[color:var(--accent-border)] bg-[color:var(--accent-bg)]'
-													: 'border-[color:var(--border)] bg-[color:var(--surface-2)]')
+													? 'client-map-person--active'
+													: '')
 											}
 										>
 											<span
-												className="h-3 w-3 rounded-full bg-[color:var(--accent)]"
+												className="client-map-person__dot"
 												style={{ filter: `hue-rotate(${hue}deg) saturate(1.2)` }}
 												aria-hidden="true"
 											/>
-											<span className="flex-1 text-[color:var(--text-h)]">{name}</span>
+											<span className="min-w-0 flex-1">
+												<span className="block truncate font-semibold text-[color:var(--text-h)]">{name}</span>
+												<span className="mt-0.5 block truncate text-[11px] text-[color:var(--muted)]">
+													{r?.grave_code ? `Tumba ${r.grave_code}` : 'Sin tumba'}{r?.sector_name ? ` · ${r.sector_name}` : ''}
+												</span>
+											</span>
 										</button>
 									)
 								})
@@ -138,7 +313,7 @@ export function ClientMapModule({ me, selected, onSelect }) {
 				</div>
 
 				{/* Mapa */}
-				<div className="min-w-0 flex-1 p-3">
+				<div className="client-map-stage">
 					<MapView selected={selected} markers={markers} onSelect={onSelect} />
 				</div>
 			</div>

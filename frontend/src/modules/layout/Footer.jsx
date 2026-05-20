@@ -4,10 +4,12 @@ export function Footer() {
 			className="theme-dark mt-auto border-t border-[color:var(--border)]"
 			style={{ background: 'var(--nav-gradient)' }}
 		>
-			<div className="mx-auto max-w-6xl px-4 py-6">
+			<div className="px-3 py-6 sm:px-4 lg:px-6">
 				<div className="grid gap-6 md:grid-cols-3">
 					<div className="space-y-2">
-						<div className="text-sm font-semibold text-[color:var(--text-h)]">QRKATA</div>
+						<div className="text-sm font-semibold">
+							<span className="bg-[var(--btn-gradient)] bg-clip-text text-transparent">QRKATA</span>
+						</div>
 						<div className="text-xs text-[color:var(--text)]">Cementerio digital — Prototipo</div>
 						<div className="text-xs text-[color:var(--text)]">
 							Autores:{' '}

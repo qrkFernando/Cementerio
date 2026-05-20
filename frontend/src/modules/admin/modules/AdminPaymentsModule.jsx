@@ -195,7 +195,7 @@ export function AdminPaymentsModule({ payments, paymentTypes, onRefresh }) {
 						type="button"
 						onClick={() => setSeenMaxId(currentMaxId || null)}
 						disabled={payments.length === 0 || currentMaxId === 0 || newCount === 0}
-						className="rounded-md border border-[color:var(--border)] px-2 py-1 text-xs text-[color:var(--text-h)] hover:bg-[color:var(--hover)] disabled:opacity-50"
+						className="rounded-md bg-[color:var(--accent-bg)] px-2 py-1 text-xs font-medium text-[color:var(--text-h)] ring-1 ring-[color:var(--accent-border)] disabled:opacity-50"
 					>
 						Marcar vistos
 					</button>
@@ -203,7 +203,7 @@ export function AdminPaymentsModule({ payments, paymentTypes, onRefresh }) {
 						type="button"
 						onClick={doRefresh}
 						disabled={refreshing}
-						className="rounded-md border border-[color:var(--border)] px-2 py-1 text-xs text-[color:var(--text-h)] hover:bg-[color:var(--hover)] disabled:opacity-50"
+						className="rounded-md bg-[color:var(--accent-bg)] px-2 py-1 text-xs font-medium text-[color:var(--text-h)] ring-1 ring-[color:var(--accent-border)] disabled:opacity-50"
 					>
 						{refreshing ? 'Actualizando…' : 'Actualizar'}
 					</button>
@@ -229,14 +229,14 @@ export function AdminPaymentsModule({ payments, paymentTypes, onRefresh }) {
 				</div>
 			</div>
 
-			<div className="max-h-[420px] overflow-y-auto rounded-md border border-[color:var(--border)] md:max-h-[560px]">
+			<div className="max-h-[420px] overflow-y-auto rounded-md border border-[color:var(--border)] bg-[color:var(--surface)] shadow-[var(--shadow)] md:max-h-[560px]">
 				{payments.length === 0 ? (
 					<div className="p-3 text-sm text-[color:var(--text)]">Sin pagos.</div>
 				) : (
 					payments.slice(0, 200).map((p) => (
 						<div
 							key={p.id}
-							className="flex items-center justify-between gap-2 border-b border-[color:var(--border)] p-3 last:border-b-0"
+							className="flex items-center justify-between gap-2 border-b border-[color:var(--border)] p-3 last:border-b-0 hover:bg-[color:var(--hover)]"
 						>
 							<div>
 								<div className="text-sm font-medium text-[color:var(--text-h)]">
@@ -247,6 +247,11 @@ export function AdminPaymentsModule({ payments, paymentTypes, onRefresh }) {
 										}
 									>
 										#{p.id} · {(p.amount_cents / 100).toFixed(2)} {p.currency}
+										{p.receipt_code ? (
+											<span className="rounded-full bg-[color:var(--accent-bg)] px-2 py-0.5 text-[10px] font-semibold tracking-wide text-[color:var(--text-h)] ring-1 ring-[color:var(--accent-border)]">
+												{p.receipt_code}
+											</span>
+										) : null}
 										{Number(p.id) > Number(seenMaxId || 0) && (
 											<span className="rounded-full bg-[color:var(--surface-2)] px-2 py-0.5 text-[10px] font-semibold text-[color:var(--az2)]">
 												NUEVO
@@ -258,18 +263,29 @@ export function AdminPaymentsModule({ payments, paymentTypes, onRefresh }) {
 									{p.client_email} · {p.payment_type_name} · {statusUi(p.status).label}
 								</div>
 							</div>
-							<select
-								value={p.status}
-								onChange={(e) => updatePaymentStatus(p.id, e.target.value)}
-								disabled={pEditLoadingId === p.id}
-								className={
-									'rounded-md border px-2 py-1 text-xs disabled:opacity-50 ' + statusUi(p.status).className
-								}
-							>
-								<option value="pending">pending</option>
-								<option value="paid">paid</option>
-								<option value="void">void</option>
-							</select>
+							<div className="flex items-center gap-2">
+								<a
+									href={`/api/admin/payments/${p.id}/receipt.pdf`}
+									target="_blank"
+									rel="noreferrer"
+									className="inline-flex items-center justify-center whitespace-nowrap rounded-md bg-red-600 px-2 py-1 text-xs font-semibold !text-white no-underline shadow-[var(--shadow)] ring-1 ring-red-700 hover:bg-red-700 hover:!text-white"
+									aria-label="Descargar boleta"
+								>
+									Boleta
+								</a>
+								<select
+									value={p.status}
+									onChange={(e) => updatePaymentStatus(p.id, e.target.value)}
+									disabled={pEditLoadingId === p.id}
+									className={
+										'rounded-md border px-2 py-1 text-xs disabled:opacity-50 ' + statusUi(p.status).className
+									}
+								>
+									<option value="pending">pending</option>
+									<option value="paid">paid</option>
+									<option value="void">void</option>
+								</select>
+							</div>
 						</div>
 					))
 				)}

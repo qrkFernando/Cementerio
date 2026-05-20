@@ -3,7 +3,7 @@ import { SearchView } from '../../cemetery/SearchView'
 
 export function ClientSearchModule({ me, requireLogin, selectedKey, onSelect, onGoToMap, searchSeed }) {
 	return (
-		<Panel>
+		<Panel className="client-panel client-panel--search">
 			{requireLogin && !me ? (
 				<div className="text-sm text-[color:var(--text)]">Inicia sesión desde la barra superior para buscar difuntos.</div>
 			) : (

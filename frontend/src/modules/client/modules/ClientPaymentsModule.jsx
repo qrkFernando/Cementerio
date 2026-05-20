@@ -3,7 +3,7 @@ import { MyPaymentsView } from '../MyPaymentsView'
 
 export function ClientPaymentsModule({ me, onLogin, intent, onIntentHandled, filterSeed }) {
 	return (
-		<Panel>
+		<Panel className="client-panel client-panel--payments">
 			<MyPaymentsView
 				me={me}
 				onLogin={onLogin}

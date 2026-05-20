@@ -121,15 +121,14 @@ export function ClientProfileModule({ me, showLoggedOutMessage, onLogout, onMeRe
 	}, [reservations])
 
 	return (
-		<Panel>
+		<Panel className="client-panel client-panel--profile">
 			{me ? (
-				<div className="space-y-4">
-					<div className="flex flex-wrap items-center justify-between gap-3">
-						<div className="flex items-center gap-3">
-							<div className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-[color:var(--border)] bg-[color:var(--surface-2)] text-[color:var(--text-h)]">
+				<div className="client-profile-view">
+					<div className="client-profile-hero">
+						<div className="client-profile-hero__avatar">
 								<svg
-									width="18"
-									height="18"
+									width="24"
+									height="24"
 									viewBox="0 0 24 24"
 									fill="none"
 									stroke="currentColor"
@@ -141,21 +140,27 @@ export function ClientProfileModule({ me, showLoggedOutMessage, onLogout, onMeRe
 									<path d="M20 21a8 8 0 0 0-16 0" />
 									<circle cx="12" cy="7" r="4" />
 								</svg>
-							</div>
-							<div>
-								<div className="text-sm font-semibold text-[color:var(--text-h)]">Perfil</div>
-								<div className="text-xs text-[color:var(--text)]">{displayUsername()}</div>
-								<div className="text-[11px] text-[color:var(--muted)]">{me.email}</div>
-							</div>
+						</div>
+						<div className="min-w-0">
+							<div className="ui-kicker">Cuenta cliente</div>
+							<div className="mt-1 truncate text-2xl font-semibold text-[color:var(--text-h)]">{displayUsername()}</div>
+							<div className="mt-1 truncate text-sm text-[color:var(--text)]">{me.email}</div>
+						</div>
+						<div className="client-profile-hero__stats">
+							<div><span>{peopleFromSearch.length}</span><small>personas</small></div>
+							<div><span>{clientProfile?.phone ? 'Sí' : 'No'}</span><small>celular</small></div>
 						</div>
 					</div>
 
 					{error ? <div className="text-sm text-red-600">{error}</div> : null}
 
-					<div className="grid gap-3 md:grid-cols-2">
-						<div className="rounded-md border border-[color:var(--border)] bg-[color:var(--surface-2)] p-4">
-							<div className="flex items-center justify-between gap-3">
-								<div className="text-sm font-semibold text-[color:var(--text-h)]">Cuenta</div>
+					<div className="client-profile-layout">
+						<div className="client-profile-card client-profile-card--account">
+							<div className="client-profile-card__head">
+								<div>
+									<div className="ui-kicker">Datos</div>
+									<div className="mt-1 text-base font-semibold text-[color:var(--text-h)]">Información de cuenta</div>
+								</div>
 								<button
 									onClick={() => {
 										setSaveError('')
@@ -168,41 +173,41 @@ export function ClientProfileModule({ me, showLoggedOutMessage, onLogout, onMeRe
 										setEditOpen((v) => !v)
 								}}
 									type="button"
-									className="rounded-md border border-[color:var(--border)] px-3 py-2 text-sm text-[color:var(--text-h)] hover:bg-[color:var(--hover)]"
+									className="rounded-md border border-[color:var(--border)] px-3 py-2 text-sm font-semibold text-[color:var(--text-h)] hover:bg-[color:var(--hover)]"
 								>
 									{editOpen ? 'Cancelar' : 'Editar'}
 								</button>
 							</div>
-							<div className="mt-3 grid gap-2 text-sm text-[color:var(--text)]">
-								<div className="flex items-center justify-between gap-3">
-									<span className="text-[color:var(--muted)]">Usuario</span>
-									<span className="font-medium text-[color:var(--text-h)]">{me.username || '—'}</span>
+							<div className="client-profile-fields">
+								<div className="client-profile-field">
+									<span>Usuario</span>
+									<strong>{me.username || '—'}</strong>
 								</div>
-								<div className="flex items-center justify-between gap-3">
-									<span className="text-[color:var(--muted)]">Correo</span>
-									<span className="font-medium text-[color:var(--text-h)]">{me.email}</span>
+								<div className="client-profile-field">
+									<span>Correo</span>
+									<strong>{me.email}</strong>
 								</div>
-								<div className="flex items-center justify-between gap-3">
-									<span className="text-[color:var(--muted)]">Rol</span>
-									<span className="font-medium text-[color:var(--text-h)]">{me.role}</span>
+								<div className="client-profile-field">
+									<span>Rol</span>
+									<strong>{me.role}</strong>
 								</div>
 								{!editOpen ? (
 									<>
-										<div className="flex items-center justify-between gap-3">
-											<span className="text-[color:var(--muted)]">Nombre</span>
-											<span className="font-medium text-[color:var(--text-h)]">{clientProfile?.full_name || '—'}</span>
+										<div className="client-profile-field">
+											<span>Nombre</span>
+											<strong>{clientProfile?.full_name || '—'}</strong>
 										</div>
-										<div className="flex items-center justify-between gap-3">
-											<span className="text-[color:var(--muted)]">DNI</span>
-											<span className="font-medium text-[color:var(--text-h)]">{clientProfile?.document_id || '—'}</span>
+										<div className="client-profile-field">
+											<span>DNI</span>
+											<strong>{clientProfile?.document_id || '—'}</strong>
 										</div>
-										<div className="flex items-center justify-between gap-3">
-											<span className="text-[color:var(--muted)]">Celular</span>
-											<span className="font-medium text-[color:var(--text-h)]">{clientProfile?.phone || '—'}</span>
+										<div className="client-profile-field">
+											<span>Celular</span>
+											<strong>{clientProfile?.phone || '—'}</strong>
 										</div>
 								</>
 								) : (
-									<div className="mt-2 space-y-2">
+									<div className="client-profile-edit">
 										<div>
 											<label className="block text-xs text-[color:var(--text)]">Usuario</label>
 											<input
@@ -262,21 +267,29 @@ export function ClientProfileModule({ me, showLoggedOutMessage, onLogout, onMeRe
 							</div>
 						</div>
 
-						<div className="rounded-md border border-[color:var(--border)] bg-[color:var(--surface-2)] p-4">
-							<div className="flex items-center justify-between gap-3">
-								<div className="text-sm font-semibold text-[color:var(--text-h)]">Personas (Búsqueda)</div>
+						<div className="client-profile-card">
+							<div className="client-profile-card__head">
+								<div>
+									<div className="ui-kicker">Búsqueda</div>
+									<div className="mt-1 text-base font-semibold text-[color:var(--text-h)]">Personas asociadas</div>
+								</div>
 								{loading ? <div className="text-xs text-[color:var(--text)]">Cargando…</div> : null}
 							</div>
 							{!loading && peopleFromSearch.length === 0 ? (
 								<div className="mt-2 text-sm text-[color:var(--text)]">Aún no hay registros.</div>
 							) : null}
 							{peopleFromSearch.length > 0 ? (
-								<div className="mt-3 space-y-2">
+								<div className="client-profile-people">
 									{peopleFromSearch.slice(0, 12).map((it) => (
-										<div key={`prof-resv-${it.id}`} className="rounded-md border border-[color:var(--border)] bg-[color:var(--surface)] p-3">
-											<div className="text-sm font-semibold text-[color:var(--text-h)]">{it.deceased_full_name || '—'}</div>
-											<div className="mt-1 text-xs text-[color:var(--text)]">Reserva: {it.reservation_code || '—'}</div>
-											<div className="mt-1 text-xs text-[color:var(--text)]">Tumba: {it.grave_code || '—'} · {prettyGraveStatus(it.grave_status)}</div>
+										<div key={`prof-resv-${it.id}`} className="client-profile-person">
+											<div className="client-profile-person__avatar" aria-hidden="true">
+												{String(it.deceased_full_name || '?').slice(0, 1).toUpperCase()}
+											</div>
+											<div className="min-w-0">
+												<div className="truncate text-sm font-semibold text-[color:var(--text-h)]">{it.deceased_full_name || '—'}</div>
+												<div className="mt-1 text-xs text-[color:var(--text)]">Reserva: {it.reservation_code || '—'}</div>
+												<div className="mt-1 text-xs text-[color:var(--muted)]">Tumba: {it.grave_code || '—'} · {prettyGraveStatus(it.grave_status)}</div>
+											</div>
 										</div>
 									))}
 									{peopleFromSearch.length > 12 ? (

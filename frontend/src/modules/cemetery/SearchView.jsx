@@ -100,11 +100,15 @@ export function SearchView({ selectedKey, onSelect, onGoToMap, searchSeed }) {
 	}
 
 	return (
-		<div className="mt-6">
-			<h2 className="text-sm font-semibold text-[color:var(--text-h)]">
-				Búsqueda
-			</h2>
-			<form className="mt-2 flex gap-2" onSubmit={onSearch}>
+		<div className="client-search-view">
+			<div className="client-section-heading">
+				<div>
+					<div className="ui-kicker">Consulta</div>
+					<h2 className="mt-1 text-lg font-semibold text-[color:var(--text-h)]">Buscar registros</h2>
+				</div>
+				<div className="client-section-heading__meta">{filtered.length} resultados</div>
+			</div>
+			<form className="mt-3 flex gap-2" onSubmit={onSearch}>
 				<input
 					value={q}
 					onChange={(e) => setQ(e.target.value)}
@@ -126,7 +130,7 @@ export function SearchView({ selectedKey, onSelect, onGoToMap, searchSeed }) {
 			)}
 
 			{filtered.length > 0 && (
-				<div className="mt-4 space-y-2">
+				<div className="client-search-results mt-4">
 					{filtered.map((it) => {
 						const key = `resv-${it.id}`
 						const isSelected = selectedKey && selectedKey === key
@@ -137,57 +141,60 @@ export function SearchView({ selectedKey, onSelect, onGoToMap, searchSeed }) {
 							<div
 								key={key}
 								className={
-									'ui-card rounded-md p-3 ' +
-									(isSelected ? 'border-[color:var(--accent-border)] bg-[color:var(--surface-2)]' : '')
+									'client-record-card ' +
+									(isSelected ? 'client-record-card--active' : '')
 								}
 							>
-								<p className="text-sm font-semibold text-[color:var(--text-h)]">
-									{it.deceased_full_name || '—'}
-								</p>
-								<div className="mt-2 grid gap-1 text-[11px] text-[color:var(--text)] sm:grid-cols-2">
-									<div>
-										<span className="ui-kicker">Reserva</span>
-										<span className="ml-2 font-medium text-[color:var(--text-h)]">{it.reservation_code || '—'}</span>
+								<div className="client-record-card__top">
+									<div className="client-record-card__avatar" aria-hidden="true">
+										{String(it.deceased_full_name || '?').slice(0, 1).toUpperCase()}
 									</div>
-									<div>
-										<span className="ui-kicker">Tumba</span>
-										<span className="ml-2 font-medium text-[color:var(--text-h)]">{it.grave_code || '—'}</span>
+									<div className="min-w-0">
+										<div className="truncate text-base font-semibold text-[color:var(--text-h)]">{it.deceased_full_name || '—'}</div>
+										<div className="mt-1 text-xs text-[color:var(--muted)]">Registro asociado a una reserva del cliente</div>
 									</div>
-									<div>
-										<span className="ui-kicker">Estado</span>
-										<span className="ml-2">{prettyGraveStatus(it.grave_status)}</span>
+									<span className="client-status-badge">{prettyGraveStatus(it.grave_status)}</span>
+								</div>
+								<div className="client-record-card__grid">
+									<div className="client-info-tile">
+										<span>Reserva</span>
+										<strong>{it.reservation_code || '—'}</strong>
 									</div>
-									<div>
-										<span className="ui-kicker">Ubicación</span>
-										<span className="ml-2">
+									<div className="client-info-tile">
+										<span>Tumba</span>
+										<strong>{it.grave_code || '—'}</strong>
+									</div>
+									<div className="client-info-tile client-info-tile--wide">
+										<span>Ubicación</span>
+										<strong>
 											{it.sector_name ? it.sector_name : '—'}
 											{it.row_number != null ? ` / Fila ${it.row_number}` : ''}
 											{it.col_number != null ? ` / Col ${it.col_number}` : ''}
-										</span>
+										</strong>
 									</div>
 								</div>
 								{hasCoords ? (
-									<div className="mt-2 text-[11px] text-[color:var(--text)]">
-										<span className="ui-kicker">Coords</span>
-										<span className="ml-2">{it.latitude}, {it.longitude}</span>
+									<div className="client-coords-note">
+										<span>Coordenadas</span>
+										<strong>{it.latitude}, {it.longitude}</strong>
 									</div>
 								) : null}
 								{onSelect ? (
-									<div className="mt-3 flex flex-wrap gap-2">
+									<div className="client-record-card__actions">
 										<button
 											onClick={() => onSelect(it)}
-											className="rounded-md bg-[color:var(--accent)] px-3 py-2 text-sm font-medium text-[color:var(--on-accent)]"
+											className="rounded-md bg-[color:var(--accent)] px-3 py-2 text-sm font-semibold text-[color:var(--on-accent)]"
 										>
 											{isSelected ? 'Seleccionado' : 'Seleccionar'}
 										</button>
 										<div className="flex flex-wrap items-center gap-2">
-											<div className="rounded-md border border-[color:var(--border)] bg-[color:var(--surface)] px-3 py-2 text-[11px] text-[color:var(--text)]">
-												<span className="ui-kicker">Mapa</span>
-												<span className="ml-2">
+											<div className="client-map-chip">
+												<span>Mapa</span>
+												<strong>
 												{hasCoords
 													? `(${it.latitude}, ${it.longitude})`
 													: `(${mapPos.x}%, ${mapPos.y}%)`}
-												</span>
+												</strong>
 											</div>
 											<button
 												type="button"

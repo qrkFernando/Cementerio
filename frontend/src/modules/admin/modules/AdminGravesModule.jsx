@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { api } from '../../../lib/api'
+import { loadGoogleMaps } from '../../../lib/googleMaps'
 import { Card, formatMoney, normalizeNumber } from '../ui'
 
-export function AdminGravesModule({ sectors, graveTypes, graves, onRefresh }) {
+export function AdminGravesModule({ branches, sectors, graveTypes, graves, onRefresh }) {
 	function safeStorageGet(key) {
 		try {
 			return window.localStorage.getItem(key)
@@ -32,6 +33,31 @@ export function AdminGravesModule({ sectors, graveTypes, graves, onRefresh }) {
 		}
 	}
 
+	const branchStorageKey = 'ui.admin.graves.branchId'
+	const [activeBranchId, setActiveBranchId] = useState(() => safeStorageGet(branchStorageKey) || '')
+	const activeBranchIdN = useMemo(() => {
+		const n = Number(activeBranchId)
+		return Number.isFinite(n) && n > 0 ? n : null
+	}, [activeBranchId])
+	useEffect(() => {
+		if (activeBranchId != null) safeStorageSet(branchStorageKey, String(activeBranchId))
+	}, [activeBranchId])
+	useEffect(() => {
+		if (activeBranchIdN != null) return
+		if (!Array.isArray(branches) || branches.length === 0) return
+		setActiveBranchId(String(branches[0].id))
+	}, [activeBranchIdN, branches])
+
+	const filteredSectors = useMemo(() => {
+		if (activeBranchIdN == null) return sectors
+		return sectors.filter((s) => Number(s.branch_id) === Number(activeBranchIdN))
+	}, [sectors, activeBranchIdN])
+
+	const filteredGraves = useMemo(() => {
+		if (activeBranchIdN == null) return graves
+		return graves.filter((g) => Number(g.branch_id) === Number(activeBranchIdN))
+	}, [graves, activeBranchIdN])
+
 	const [grRefreshLoading, setGrRefreshLoading] = useState(false)
 	const gravesStorageKey = 'ui.admin.graves.seenMaxId'
 	const [grSeenMaxId, setGrSeenMaxId] = useState(() => {
@@ -40,9 +66,9 @@ export function AdminGravesModule({ sectors, graveTypes, graves, onRefresh }) {
 		return Number.isFinite(n) ? n : null
 	})
 	const grCurrentMaxId = useMemo(() => {
-		const ids = graves.map((g) => Number(g.id)).filter((n) => Number.isFinite(n))
+		const ids = filteredGraves.map((g) => Number(g.id)).filter((n) => Number.isFinite(n))
 		return ids.length ? Math.max(...ids) : 0
-	}, [graves])
+	}, [filteredGraves])
 	useEffect(() => {
 		if (grSeenMaxId == null && grCurrentMaxId > 0) {
 			setGrSeenMaxId(grCurrentMaxId)
@@ -54,8 +80,8 @@ export function AdminGravesModule({ sectors, graveTypes, graves, onRefresh }) {
 	}, [grSeenMaxId])
 	const grNewCount = useMemo(() => {
 		if (grSeenMaxId == null) return 0
-		return graves.filter((g) => Number(g.id) > Number(grSeenMaxId)).length
-	}, [graves, grSeenMaxId])
+		return filteredGraves.filter((g) => Number(g.id) > Number(grSeenMaxId)).length
+	}, [filteredGraves, grSeenMaxId])
 	async function doRefreshGravesList() {
 		setGrRefreshLoading(true)
 		try {
@@ -67,7 +93,7 @@ export function AdminGravesModule({ sectors, graveTypes, graves, onRefresh }) {
 	const [sectorName, setSectorName] = useState('')
 	const [sectorLoading, setSectorLoading] = useState(false)
 	const [sectorMsg, setSectorMsg] = useState('')
-	const canCreateSector = useMemo(() => sectorName.trim().length >= 1, [sectorName])
+	const canCreateSector = useMemo(() => sectorName.trim().length >= 1 && activeBranchIdN != null, [sectorName, activeBranchIdN])
 
 	const [graveSectorId, setGraveSectorId] = useState('')
 	const [graveRow, setGraveRow] = useState('')
@@ -88,7 +114,7 @@ export function AdminGravesModule({ sectors, graveTypes, graves, onRefresh }) {
 		try {
 			const result = await api('/api/admin/sectors', {
 				method: 'POST',
-				body: JSON.stringify({ name: sectorName }),
+				body: JSON.stringify({ name: sectorName, branchId: activeBranchIdN }),
 			})
 			if (!result.ok) {
 				setSectorMsg(result.data?.error || 'No se pudo crear el sector')
@@ -107,7 +133,7 @@ export function AdminGravesModule({ sectors, graveTypes, graves, onRefresh }) {
 		setSectorMsg('')
 		try {
 			for (const name of ['A', 'B', 'C', 'D']) {
-				await api('/api/admin/sectors', { method: 'POST', body: JSON.stringify({ name }) })
+				await api('/api/admin/sectors', { method: 'POST', body: JSON.stringify({ name, branchId: activeBranchIdN }) })
 			}
 			setSectorMsg('Sectores A–D listos')
 			await onRefresh?.()
@@ -158,6 +184,115 @@ export function AdminGravesModule({ sectors, graveTypes, graves, onRefresh }) {
 	}
 
 	const [graveEditLoadingId, setGraveEditLoadingId] = useState(null)
+	const [locEditId, setLocEditId] = useState(null)
+	const [locLat, setLocLat] = useState('')
+	const [locLng, setLocLng] = useState('')
+	const [locSaving, setLocSaving] = useState(false)
+	const [locMsg, setLocMsg] = useState('')
+	const [locMapOpen, setLocMapOpen] = useState(false)
+	const [locMapEverOpened, setLocMapEverOpened] = useState(false)
+	const [locPreview, setLocPreview] = useState(null)
+
+	const editingGrave = useMemo(() => {
+		if (locEditId == null) return null
+		return filteredGraves.find((gr) => Number(gr.id) === Number(locEditId)) || null
+	}, [filteredGraves, locEditId])
+
+	const locInputCoords = useMemo(() => {
+		const lat = normalizeNumber(locLat)
+		const lng = normalizeNumber(locLng)
+		const hasBoth = lat != null && lng != null
+		return { lat, lng, hasBoth }
+	}, [locLat, locLng])
+
+	function openLocationEditor(grave) {
+		setLocEditId(grave?.id ?? null)
+		setLocLat(grave?.latitude != null ? String(grave.latitude) : '')
+		setLocLng(grave?.longitude != null ? String(grave.longitude) : '')
+		setLocMsg('')
+		setLocSaving(false)
+		setLocMapOpen(false)
+		setLocMapEverOpened(false)
+		if (grave?.latitude != null && grave?.longitude != null) {
+			const lat = Number(grave.latitude)
+			const lng = Number(grave.longitude)
+			setLocPreview(Number.isFinite(lat) && Number.isFinite(lng) ? { lat, lng } : null)
+		} else {
+			setLocPreview(null)
+		}
+	}
+
+	function closeLocationEditor() {
+		setLocEditId(null)
+		setLocMsg('')
+		setLocMapOpen(false)
+		setLocMapEverOpened(false)
+		setLocPreview(null)
+	}
+
+	function toggleLocationMapPreview() {
+		setLocMapOpen((open) => {
+			const next = !open
+			if (next) {
+				if (!locInputCoords.hasBoth) return open
+				setLocPreview({ lat: locInputCoords.lat, lng: locInputCoords.lng })
+				setLocMapEverOpened(true)
+			}
+			return next
+		})
+	}
+
+	async function saveLocationForEditingGrave() {
+		if (!editingGrave) return
+		setLocMsg('')
+
+		const { lat, lng } = locInputCoords
+		const hasLat = lat != null
+		const hasLng = lng != null
+		if (hasLat !== hasLng) {
+			setLocMsg('Completa latitud y longitud (o deja ambos vacíos).')
+			return
+		}
+		if (lat != null && (lat < -90 || lat > 90)) {
+			setLocMsg('Latitud inválida (rango: -90 a 90).')
+			return
+		}
+		if (lng != null && (lng < -180 || lng > 180)) {
+			setLocMsg('Longitud inválida (rango: -180 a 180).')
+			return
+		}
+
+		const sectorId = editingGrave?.sector_id
+		const rowNumber = editingGrave?.row_number
+		const colNumber = editingGrave?.col_number
+		if (sectorId == null || rowNumber == null || colNumber == null) {
+			setLocMsg('Esta tumba no tiene sector/fila/columna; no se puede guardar ubicación.')
+			return
+		}
+
+		setLocSaving(true)
+		try {
+			const result = await api(`/api/admin/graves/${editingGrave.id}`, {
+				method: 'PATCH',
+				body: JSON.stringify({
+					sectorId: Number(sectorId),
+					rowNumber: Number(rowNumber),
+					colNumber: Number(colNumber),
+					latitude: lat,
+					longitude: lng,
+				}),
+			})
+			if (!result.ok) {
+				setLocMsg(result.data?.error || 'No se pudo guardar la ubicación.')
+				return
+			}
+			setLocMsg('Ubicación guardada.')
+			await onRefresh?.()
+		} finally {
+			setLocSaving(false)
+		}
+	}
+
 	async function updateGraveStatus(graveId, status) {
 		setGraveEditLoadingId(graveId)
 		try {
@@ -195,20 +330,399 @@ export function AdminGravesModule({ sectors, graveTypes, graves, onRefresh }) {
 
 	const [mapLoading, setMapLoading] = useState(false)
 	const [mapError, setMapError] = useState('')
-	const [mapSectors, setMapSectors] = useState([])
-	const [mapSectorId, setMapSectorId] = useState(null)
+	const [_mapSectors, setMapSectors] = useState([])
+	const [_mapSectorId, setMapSectorId] = useState(null)
 	const [mapGraves, setMapGraves] = useState([])
 
-	useEffect(() => {
-		if (!gridSectorId && sectors.length > 0) {
-			setGridSectorId(String(sectors[0].id))
+	// Ubicación general del cementerio (mapa general)
+	const [cemName, setCemName] = useState('')
+	const [cemAddress, setCemAddress] = useState('')
+	const [cemLat, setCemLat] = useState('')
+	const [cemLng, setCemLng] = useState('')
+	const [cemLoading, setCemLoading] = useState(false)
+	const [cemSaving, setCemSaving] = useState(false)
+	const [cemMsg, setCemMsg] = useState('')
+	const [cemPreviewOpen, setCemPreviewOpen] = useState(false)
+	const [cemPreviewEverOpened, setCemPreviewEverOpened] = useState(false)
+	const [cemPinnedHref, setCemPinnedHref] = useState(null)
+	const [cemMapsLoading, setCemMapsLoading] = useState(false)
+	const [cemMapsError, setCemMapsError] = useState('')
+	const [cemMapsReady, setCemMapsReady] = useState(false)
+	const [cemUseNewPlacesWidget, setCemUseNewPlacesWidget] = useState(false)
+	const cemAddressInputRef = useRef(null)
+	const cemPlaceWidgetHostRef = useRef(null)
+	const cemPlaceWidgetRef = useRef(null)
+	const cemMapDivRef = useRef(null)
+	const cemMapRef = useRef(null)
+	const cemMarkerRef = useRef(null)
+	const cemAutocompleteRef = useRef(null)
+	const cemGeocoderRef = useRef(null)
+	const cemGmapsListenerCleanupRef = useRef(null)
+
+	const cemCoords = useMemo(() => {
+		const lat = normalizeNumber(cemLat)
+		const lng = normalizeNumber(cemLng)
+		return { lat, lng, hasBoth: lat != null && lng != null }
+	}, [cemLat, cemLng])
+
+	function pinCemeteryPreview(input) {
+		const lat = input?.lat != null ? Number(input.lat) : null
+		const lng = input?.lng != null ? Number(input.lng) : null
+		const hasCoords = Number.isFinite(lat) && Number.isFinite(lng)
+		const address = String(input?.address || '').trim()
+		const q = hasCoords ? `${lat},${lng}` : address
+		if (!q) {
+			setCemPinnedHref(null)
+			return
 		}
-	}, [gridSectorId, sectors])
+		setCemPinnedHref(`https://www.google.com/maps?q=${encodeURIComponent(q)}`)
+	}
+
+	async function ensureCemeteryMapsReady() {
+		if (cemMapsReady) return true
+		if (cemMapsLoading) return false
+		setCemMapsLoading(true)
+		setCemMapsError('')
+		try {
+			const keyRes = await api('/api/admin/google-maps-key')
+			if (!keyRes.ok) {
+				if (keyRes.status === 401 || keyRes.status === 403) {
+					setCemMapsError('Necesitas iniciar sesión con permisos para cargar Google Maps.')
+				} else if (keyRes.status === 404) {
+					setCemMapsError('Google Maps no está configurado. Define GOOGLE_MAPS_API_KEY en el backend (.env).')
+				} else {
+					setCemMapsError('No se pudo obtener la configuración de Google Maps.')
+				}
+				return false
+			}
+			await loadGoogleMaps(keyRes.data?.apiKey)
+			setCemMapsReady(true)
+			return true
+		} catch (e) {
+			setCemMapsError(e?.message || 'No se pudo cargar Google Maps.')
+			return false
+		} finally {
+			setCemMapsLoading(false)
+		}
+	}
+
+	function setCemeteryCoordsFromLatLng(lat, lng) {
+		if (!Number.isFinite(lat) || !Number.isFinite(lng)) return
+		setCemLat(String(lat))
+		setCemLng(String(lng))
+		pinCemeteryPreview({ lat, lng, address: cemAddress.trim() })
+	}
+
+	async function reverseGeocodeCemetery(lat, lng) {
+		try {
+			const geocoder = cemGeocoderRef.current
+			if (!geocoder || !window.google?.maps) return
+			const res = await geocoder.geocode({ location: { lat, lng } })
+			const formatted = res?.results?.[0]?.formatted_address
+			if (formatted) {
+				setCemAddress(String(formatted))
+				pinCemeteryPreview({ lat, lng, address: formatted })
+			}
+		} catch {
+			// ignore
+		}
+	}
+
+	function syncCemeteryMapFromState() {
+		const map = cemMapRef.current
+		const marker = cemMarkerRef.current
+		if (!map || !marker || !window.google?.maps) return
+		const { lat, lng, hasBoth } = cemCoords
+		if (!hasBoth) {
+			marker.setMap(null)
+			return
+		}
+		marker.setMap(map)
+		marker.setPosition({ lat, lng })
+		map.setCenter({ lat, lng })
+	}
+
+	async function initCemeteryMapsUi() {
+		const ok = await ensureCemeteryMapsReady()
+		if (!ok) return
+
+		// Preferir el nuevo widget PlaceAutocompleteElement (Places API nueva), si está disponible.
+		if (!cemPlaceWidgetRef.current && cemPlaceWidgetHostRef.current) {
+			try {
+				let PlaceAutocompleteElement = window.google?.maps?.places?.PlaceAutocompleteElement
+				if (!PlaceAutocompleteElement && window.google?.maps?.importLibrary) {
+					const placesLib = await window.google.maps.importLibrary('places')
+					PlaceAutocompleteElement = placesLib?.PlaceAutocompleteElement || window.google?.maps?.places?.PlaceAutocompleteElement
+				}
+				if (!PlaceAutocompleteElement) throw new Error('PlaceAutocompleteElement no disponible')
+
+				const widget = new PlaceAutocompleteElement({})
+				widget.placeholder = 'Busca un lugar (Google Places)'
+				widget.style.display = 'block'
+				widget.style.width = '100%'
+				// Montar dentro de un contenedor “controlado” por React.
+				cemPlaceWidgetHostRef.current.innerHTML = ''
+				cemPlaceWidgetHostRef.current.appendChild(widget)
+				cemPlaceWidgetRef.current = widget
+				setCemUseNewPlacesWidget(true)
+				setTimeout(() => widget.focus?.(), 0)
+
+				// Listener oficial: gmp-select devuelve placePrediction.
+				widget.addEventListener('gmp-select', async (e) => {
+					try {
+						const placePrediction = e?.placePrediction || e?.detail?.placePrediction
+						const place = placePrediction?.toPlace?.()
+						if (!place?.fetchFields) return
+						await place.fetchFields({ fields: ['displayName', 'formattedAddress', 'location', 'viewport'] })
+						const displayName = place.displayName ? String(place.displayName) : ''
+						const formattedAddress = place.formattedAddress ? String(place.formattedAddress) : ''
+						const loc = place.location || null
+						const lat = typeof loc?.lat === 'function' ? loc.lat() : loc?.lat
+						const lng = typeof loc?.lng === 'function' ? loc.lng() : loc?.lng
+
+						if (displayName) setCemName(displayName)
+						if (formattedAddress) setCemAddress(formattedAddress)
+						if (Number.isFinite(lat) && Number.isFinite(lng)) {
+							setCemLat(String(lat))
+							setCemLng(String(lng))
+							pinCemeteryPreview({ lat, lng, address: formattedAddress })
+							const map = cemMapRef.current
+							const marker = cemMarkerRef.current
+							if (map && marker) {
+								marker.setMap(map)
+								marker.setPosition({ lat, lng })
+								map.setCenter({ lat, lng })
+								map.setZoom(16)
+							}
+						}
+					} catch {
+						// ignore
+					}
+				})
+			} catch {
+				// Si falla, seguimos con el fallback legacy.
+			}
+		}
+
+		if (!cemAutocompleteRef.current && cemAddressInputRef.current && window.google?.maps?.places) {
+			// Fallback legacy (puede estar deshabilitado para proyectos nuevos)
+			if (!window.google.maps.places.Autocomplete) {
+				// No disponible: dejamos el input como entrada manual.
+			} else {
+				const ac = new window.google.maps.places.Autocomplete(cemAddressInputRef.current, {
+				fields: ['place_id', 'formatted_address', 'geometry', 'name', 'url'],
+				types: ['geocode', 'establishment'],
+				})
+				cemAutocompleteRef.current = ac
+				ac.addListener('place_changed', () => {
+					const place = ac.getPlace?.()
+					const name = place?.name ? String(place.name) : ''
+					const address = place?.formatted_address ? String(place.formatted_address) : ''
+					const lat = place?.geometry?.location?.lat?.()
+					const lng = place?.geometry?.location?.lng?.()
+
+					if (name) setCemName(name)
+					if (address) setCemAddress(address)
+					if (Number.isFinite(lat) && Number.isFinite(lng)) {
+						setCemLat(String(lat))
+						setCemLng(String(lng))
+						pinCemeteryPreview({ lat, lng, address })
+						const map = cemMapRef.current
+						const marker = cemMarkerRef.current
+						if (map && marker) {
+							marker.setMap(map)
+							marker.setPosition({ lat, lng })
+							map.setCenter({ lat, lng })
+							map.setZoom(16)
+						}
+					}
+
+					if (place?.url) setCemPinnedHref(String(place.url))
+				})
+			}
+		}
+
+		if (!cemMapRef.current && cemMapDivRef.current && window.google?.maps) {
+			try {
+				const { lat, lng, hasBoth } = cemCoords
+				const initialCenter = hasBoth ? { lat, lng } : { lat: -12.0464, lng: -77.0428 }
+				const map = new window.google.maps.Map(cemMapDivRef.current, {
+					center: initialCenter,
+					zoom: hasBoth ? 16 : 13,
+					mapTypeControl: false,
+					streetViewControl: false,
+					fullscreenControl: true,
+				})
+				cemMapRef.current = map
+				const marker = new window.google.maps.Marker({
+					map,
+					position: hasBoth ? { lat, lng } : initialCenter,
+					draggable: true,
+				})
+				if (!hasBoth) marker.setMap(null)
+				cemMarkerRef.current = marker
+				cemGeocoderRef.current = new window.google.maps.Geocoder()
+
+				const onMapClick = map.addListener('click', (e) => {
+					const nextLat = e?.latLng?.lat?.()
+					const nextLng = e?.latLng?.lng?.()
+					if (!Number.isFinite(nextLat) || !Number.isFinite(nextLng)) return
+					setCemeteryCoordsFromLatLng(nextLat, nextLng)
+					reverseGeocodeCemetery(nextLat, nextLng)
+				})
+				const onMarkerDrag = marker.addListener('dragend', (e) => {
+					const nextLat = e?.latLng?.lat?.()
+					const nextLng = e?.latLng?.lng?.()
+					if (!Number.isFinite(nextLat) || !Number.isFinite(nextLng)) return
+					setCemeteryCoordsFromLatLng(nextLat, nextLng)
+					reverseGeocodeCemetery(nextLat, nextLng)
+				})
+				cemGmapsListenerCleanupRef.current = () => {
+					try {
+						onMapClick?.remove?.()
+						onMarkerDrag?.remove?.()
+					} catch {
+						// ignore
+					}
+				}
+			} catch (e) {
+				setCemMapsError(e?.message || 'No se pudo inicializar el mapa de Google Maps.')
+				return
+			}
+		}
+
+		syncCemeteryMapFromState()
+	}
+
+	async function loadCemeteryLocation() {
+		setCemLoading(true)
+		setCemMsg('')
+		try {
+			const result = await api('/api/admin/cemetery-location')
+			if (!result.ok) {
+				setCemMsg(result.data?.error || 'No se pudo cargar la ubicación del cementerio.')
+				return null
+			}
+			const loc = result.data?.location || null
+			setCemName(loc?.name ? String(loc.name) : '')
+			setCemAddress(loc?.address ? String(loc.address) : '')
+			setCemLat(loc?.latitude != null ? String(loc.latitude) : '')
+			setCemLng(loc?.longitude != null ? String(loc.longitude) : '')
+			pinCemeteryPreview({
+				lat: loc?.latitude,
+				lng: loc?.longitude,
+				address: loc?.address,
+			})
+			// Si el mapa ya está listo, sincronizar el pin.
+			queueMicrotask(() => syncCemeteryMapFromState())
+			return loc
+		} finally {
+			setCemLoading(false)
+		}
+	}
+
+	async function saveCemeteryLocation(e) {
+		e?.preventDefault()
+		setCemMsg('')
+
+		const name = cemName.trim() ? cemName.trim() : null
+		const address = cemAddress.trim() ? cemAddress.trim() : null
+		const { lat, lng } = cemCoords
+		const hasLat = lat != null
+		const hasLng = lng != null
+		if (hasLat !== hasLng) {
+			setCemMsg('Completa latitud y longitud (o deja ambos vacíos).')
+			return
+		}
+		if (lat != null && (lat < -90 || lat > 90)) {
+			setCemMsg('Latitud inválida (rango: -90 a 90).')
+			return
+		}
+		if (lng != null && (lng < -180 || lng > 180)) {
+			setCemMsg('Longitud inválida (rango: -180 a 180).')
+			return
+		}
+		setCemSaving(true)
+		try {
+			const result = await api('/api/admin/cemetery-location', {
+				method: 'PUT',
+				body: JSON.stringify({
+					name,
+					address,
+					latitude: lat,
+					longitude: lng,
+				}),
+			})
+			if (!result.ok) {
+				setCemMsg(result.data?.error || 'No se pudo guardar la ubicación del cementerio.')
+				return
+			}
+			setCemMsg('Ubicación del cementerio guardada.')
+			pinCemeteryPreview({ lat, lng, address })
+		} finally {
+			setCemSaving(false)
+		}
+	}
+
+	async function toggleCemeteryPreview() {
+		const next = !cemPreviewOpen
+		setCemPreviewOpen(next)
+		if (!next) return
+		if (!cemPreviewEverOpened) setCemPreviewEverOpened(true)
+		await initCemeteryMapsUi()
+		// Asegurar que el mapa se renderice bien al mostrarse.
+		try {
+			const map = cemMapRef.current
+			if (map && window.google?.maps?.event?.trigger) {
+				requestAnimationFrame(() => {
+					window.google.maps.event.trigger(map, 'resize')
+					syncCemeteryMapFromState()
+				})
+			}
+		} catch {
+			// ignore
+		}
+	}
+
+	useEffect(() => {
+		if (!cemPreviewEverOpened) return
+		initCemeteryMapsUi()
+		return () => {
+			// no destruimos el SDK global; solo limpiamos listeners locales
+			try {
+				cemGmapsListenerCleanupRef.current?.()
+			} catch {
+				// ignore
+			}
+		}
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [cemPreviewEverOpened])
+
+	useEffect(() => {
+		if (!cemPreviewEverOpened) return
+		syncCemeteryMapFromState()
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [cemCoords.lat, cemCoords.lng, cemPreviewEverOpened])
+
+	useEffect(() => {
+		if (!gridSectorId && filteredSectors.length > 0) {
+			setGridSectorId(String(filteredSectors[0].id))
+		}
+	}, [gridSectorId, filteredSectors])
+
+	useEffect(() => {
+		if (activeBranchIdN == null) return
+		if (graveSectorId && !filteredSectors.some((s) => String(s.id) === String(graveSectorId))) {
+			setGraveSectorId('')
+		}
+		if (gridSectorId && !filteredSectors.some((s) => String(s.id) === String(gridSectorId))) {
+			setGridSectorId(filteredSectors[0] ? String(filteredSectors[0].id) : '')
+		}
+	}, [activeBranchIdN, filteredSectors, graveSectorId, gridSectorId])
 
 	useEffect(() => {
 		if (!gridSectorId) return
 		loadAdminMap(Number(gridSectorId))
-		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [gridSectorId])
 
 	const currentMaxRow = useMemo(() => {
@@ -245,7 +759,10 @@ export function AdminGravesModule({ sectors, graveTypes, graves, onRefresh }) {
 		setMapLoading(true)
 		setMapError('')
 		try {
-			const result = await api(`/api/admin/grave-map?sectorId=${encodeURIComponent(String(sectorId))}`)
+			const params = new URLSearchParams()
+			params.set('sectorId', String(sectorId))
+			if (activeBranchIdN != null) params.set('branchId', String(activeBranchIdN))
+			const result = await api(`/api/admin/grave-map?${params.toString()}`)
 			if (!result.ok) {
 				setMapError(result.data?.error || 'No se pudo cargar el mapa')
 				setMapSectors([])
@@ -314,7 +831,143 @@ export function AdminGravesModule({ sectors, graveTypes, graves, onRefresh }) {
 
 	return (
 		<Card title="Gestionar tumbas">
+			<form className="space-y-2" onSubmit={saveCemeteryLocation}>
+				<div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+					<div className="text-xs text-[color:var(--text)]">Ubicación del cementerio (mapa general)</div>
+					<div className="flex items-center justify-end gap-2">
+						<button
+							type="button"
+							onClick={loadCemeteryLocation}
+							disabled={cemLoading}
+							className="inline-flex h-10 items-center rounded-md border border-[color:var(--border)] bg-[color:var(--surface)] px-3 text-sm font-medium text-[color:var(--text-h)] hover:bg-[color:var(--hover)] disabled:opacity-50"
+						>
+							{cemLoading ? 'Cargando…' : 'Cargar'}
+						</button>
+						<button
+							disabled={cemSaving}
+							className="inline-flex h-10 items-center rounded-md bg-[color:var(--accent)] px-3 text-sm font-medium text-white disabled:opacity-50"
+						>
+							{cemSaving ? 'Guardando…' : 'Guardar'}
+						</button>
+						<button
+							type="button"
+							onClick={toggleCemeteryPreview}
+							disabled={cemMapsLoading}
+							className={
+								'inline-flex h-10 items-center rounded-md border px-3 text-sm font-medium disabled:opacity-50 ' +
+								(cemPreviewOpen
+									? 'border-[color:var(--accent-border)] bg-[color:var(--accent-bg)] text-[color:var(--text-h)]'
+									: 'border-[color:var(--border)] bg-[color:var(--surface)] text-[color:var(--text-h)] hover:bg-[color:var(--hover)]')
+							}
+						>
+							{cemPreviewOpen ? 'Ocultar mapa' : 'Abrir mapa'}
+						</button>
+						{cemPinnedHref ? (
+							<a
+								href={cemPinnedHref}
+								target="_blank"
+								rel="noreferrer"
+								className="inline-flex h-10 items-center rounded-md bg-[color:var(--accent)] px-3 text-sm font-medium text-[color:var(--on-accent)]"
+							>
+								Abrir
+							</a>
+						) : null}
+					</div>
+				</div>
+
+				<div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+					<div className="space-y-2">
+						<div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+							<input
+								value={cemName}
+								onChange={(e) => setCemName(e.target.value)}
+								className="w-full rounded-md border border-[color:var(--border)] bg-transparent px-3 py-2 text-sm"
+								placeholder="Nombre (autocompleta al seleccionar)"
+							/>
+							<div
+								ref={cemPlaceWidgetHostRef}
+								className="w-full"
+								style={{ display: cemUseNewPlacesWidget ? 'block' : 'none' }}
+								onMouseDown={() => initCemeteryMapsUi()}
+							/>
+							<input
+								ref={cemAddressInputRef}
+								value={cemAddress}
+								onChange={(e) => setCemAddress(e.target.value)}
+								onFocus={() => initCemeteryMapsUi()}
+								className="w-full rounded-md border border-[color:var(--border)] bg-transparent px-3 py-2 text-sm"
+								style={{ display: cemUseNewPlacesWidget ? 'none' : 'block' }}
+								placeholder="Busca un lugar (Google Places)"
+								autoComplete="off"
+							/>
+						</div>
+						<div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+							<input
+								value={cemLat}
+								onChange={(e) => setCemLat(e.target.value)}
+								className="w-full rounded-md border border-[color:var(--border)] bg-transparent px-3 py-2 text-sm"
+								placeholder="Latitud"
+								inputMode="decimal"
+							/>
+							<input
+								value={cemLng}
+								onChange={(e) => setCemLng(e.target.value)}
+								className="w-full rounded-md border border-[color:var(--border)] bg-transparent px-3 py-2 text-sm"
+								placeholder="Longitud"
+								inputMode="decimal"
+							/>
+						</div>
+						<div className="text-xs text-[color:var(--text)]">
+							Tip: selecciona un lugar desde el autocomplete para autocompletar. También puedes hacer click en el mapa o arrastrar el pin.
+						</div>
+						{cemMapsError ? <div className="text-xs text-[color:var(--text)]">{cemMapsError}</div> : null}
+						{cemMapsLoading ? <div className="text-xs text-[color:var(--text)]">Cargando Google Maps…</div> : null}
+						{cemMsg ? <div className="text-xs text-[color:var(--text)]">{cemMsg}</div> : null}
+					</div>
+
+					{cemPreviewEverOpened ? (
+						<div className={cemPreviewOpen ? '' : 'hidden'}>
+							<div className="overflow-hidden rounded-md border border-[color:var(--border)] bg-[color:var(--surface-2)]">
+								<div ref={cemMapDivRef} className="h-[420px] w-full" />
+							</div>
+							<div className="mt-2 text-xs text-[color:var(--text)]">Se carga una vez y luego solo se oculta.</div>
+						</div>
+					) : (
+						<div className="hidden" />
+					)}
+				</div>
+				<div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+					<div className="text-xs text-[color:var(--text)]">
+						{cemPinnedHref ? 'Listo para mostrar en cliente.' : 'Guarda una dirección o coordenadas para habilitar el mapa.'}
+					</div>
+					<div className="text-xs text-[color:var(--text)]">{cemCoords.hasBoth ? `Pin: ${cemCoords.lat}, ${cemCoords.lng}` : 'Sin pin (puedes seleccionar un lugar o usar el mapa).'} </div>
+				</div>
+			</form>
+
 			<form className="space-y-2" onSubmit={createSector}>
+				<div className="space-y-2">
+					<div className="text-xs text-[color:var(--text)]">Sucursal</div>
+					{Array.isArray(branches) && branches.length > 0 ? (
+						<select
+							value={activeBranchId}
+							onChange={(e) => setActiveBranchId(e.target.value)}
+							className="w-full rounded-md border border-[color:var(--border)] bg-transparent px-3 py-2 text-sm"
+						>
+							{branches.map((b) => (
+								<option key={b.id} value={String(b.id)}>
+									{b.name}
+								</option>
+							))}
+						</select>
+					) : (
+						<div className="rounded-md border border-[color:var(--border)] bg-[color:var(--surface-2)] px-3 py-2 text-sm text-[color:var(--text)]">
+							No hay sucursales configuradas.
+						</div>
+					)}
+					<div className="text-xs text-[color:var(--text)]">
+						Los sectores, grillas y el listado se filtran por sucursal.
+					</div>
+				</div>
 				<div className="text-xs text-[color:var(--text)]">Crear sector</div>
 				<div className="flex gap-2">
 					<input
@@ -353,7 +1006,7 @@ export function AdminGravesModule({ sectors, graveTypes, graves, onRefresh }) {
 						className="w-full rounded-md border border-[color:var(--border)] bg-transparent px-3 py-2 text-sm"
 					>
 						<option value="">Sector</option>
-						{sectors.map((s) => (
+						{filteredSectors.map((s) => (
 							<option key={s.id} value={String(s.id)}>
 								{s.name}
 							</option>
@@ -435,7 +1088,7 @@ export function AdminGravesModule({ sectors, graveTypes, graves, onRefresh }) {
 						className="w-full rounded-md border border-[color:var(--border)] bg-transparent px-3 py-2 text-sm"
 					>
 						<option value="">Sector</option>
-						{sectors.map((s) => (
+						{filteredSectors.map((s) => (
 							<option key={s.id} value={String(s.id)}>
 								{s.name}
 							</option>
@@ -539,7 +1192,7 @@ export function AdminGravesModule({ sectors, graveTypes, graves, onRefresh }) {
 					<button
 						type="button"
 						onClick={() => setGrSeenMaxId(grCurrentMaxId || null)}
-						disabled={graves.length === 0 || grCurrentMaxId === 0 || grNewCount === 0}
+						disabled={filteredGraves.length === 0 || grCurrentMaxId === 0 || grNewCount === 0}
 						className="rounded-md border border-[color:var(--border)] px-2 py-1 text-xs text-[color:var(--text-h)] hover:bg-[color:var(--hover)] disabled:opacity-50"
 					>
 						Marcar vistos
@@ -573,61 +1226,178 @@ export function AdminGravesModule({ sectors, graveTypes, graves, onRefresh }) {
 				</div>
 			</div>
 			<div className="max-h-[420px] overflow-y-auto rounded-md border border-[color:var(--border)] md:max-h-[560px]">
-				{graves.length === 0 ? (
+				{filteredGraves.length === 0 ? (
 					<div className="p-3 text-sm text-[color:var(--text)]">Sin tumbas.</div>
 				) : (
-					graves.slice(0, 200).map((g) => (
+					filteredGraves.slice(0, 200).map((g) => (
 						<div
 							key={g.id}
-							className="flex items-center justify-between gap-2 border-b border-[color:var(--border)] p-3 last:border-b-0"
+							className="border-b border-[color:var(--border)] p-3 last:border-b-0"
 						>
-							<div>
-								<div className="text-sm font-medium text-[color:var(--text-h)]">
-									<span className={Number(g.id) > Number(grSeenMaxId || 0) ? 'text-[color:var(--az2)]' : ''}>{g.code}</span>
-									{Number(g.id) > Number(grSeenMaxId || 0) && (
-										<span className="ml-2 rounded-full bg-[color:var(--surface-2)] px-2 py-0.5 text-[10px] font-semibold text-[color:var(--az2)]">
-											NUEVO
+							<div className="flex items-center justify-between gap-2">
+								<div>
+									<div className="text-sm font-medium text-[color:var(--text-h)]">
+										<span className={Number(g.id) > Number(grSeenMaxId || 0) ? 'text-[color:var(--az2)]' : ''}>{g.code}</span>
+										{Number(g.id) > Number(grSeenMaxId || 0) && (
+											<span className="ml-2 rounded-full bg-[color:var(--surface-2)] px-2 py-0.5 text-[10px] font-semibold text-[color:var(--az2)]">
+												NUEVO
+											</span>
+										)}
+									</div>
+									<div className="text-xs text-[color:var(--text)]">
+										{g.sector_name ? g.sector_name : '—'}
+										{g.branch_name ? ` · ${g.branch_name}` : ''}
+										{g.row_number != null ? ` / Fila ${g.row_number}` : ''}
+										{g.col_number != null ? ` / Col ${g.col_number}` : ''} · {g.status}
+										{g.latitude != null && g.longitude != null ? ` · ${g.latitude}, ${g.longitude}` : ''}
+									</div>
+									<div className="text-xs text-[color:var(--text)]">
+										Precio:{' '}
+										<span className="font-medium text-[color:var(--text-h)]">{formatMoney(g.price_cents, 'PEN')}</span> ·{' '}
+										<span className={g.is_enabled === false ? 'text-red-600' : 'text-[color:var(--text)]'}>
+											{g.is_enabled === false ? 'Deshabilitado' : 'Habilitado'}
 										</span>
-									)}
+									</div>
 								</div>
-								<div className="text-xs text-[color:var(--text)]">
-									{g.sector_name ? g.sector_name : '—'}
-									{g.row_number != null ? ` / Fila ${g.row_number}` : ''}
-									{g.col_number != null ? ` / Col ${g.col_number}` : ''} · {g.status}
-									{g.latitude != null && g.longitude != null ? ` · ${g.latitude}, ${g.longitude}` : ''}
-								</div>
-								<div className="text-xs text-[color:var(--text)]">
-									Precio:{' '}
-									<span className="font-medium text-[color:var(--text-h)]">{formatMoney(g.price_cents, 'PEN')}</span> ·{' '}
-									<span className={g.is_enabled === false ? 'text-red-600' : 'text-[color:var(--text)]'}>
-										{g.is_enabled === false ? 'Deshabilitado' : 'Habilitado'}
-									</span>
-								</div>
-							</div>
-							<div className="flex flex-col gap-2">
-								<select
-									value={g.status}
-									onChange={(e) => updateGraveStatus(g.id, e.target.value)}
-									disabled={graveEditLoadingId === g.id}
-									className={
-										'rounded-md border px-2 py-1 text-xs disabled:opacity-50 ' + graveStatusUi(g.status).className
-									}
-								>
-									<option value="available">available</option>
-									<option value="reserved">reserved</option>
-									<option value="occupied">occupied</option>
-									<option value="maintenance">maintenance</option>
-								</select>
-								<label className="flex items-center justify-end gap-2 text-xs text-[color:var(--text)]">
-									<input
-										type="checkbox"
-										checked={g.is_enabled !== false}
+								<div className="flex flex-col items-end gap-2">
+									<select
+										value={g.status}
+										onChange={(e) => updateGraveStatus(g.id, e.target.value)}
 										disabled={graveEditLoadingId === g.id}
-										onChange={(e) => updateGravePublish(g.id, { isEnabled: e.target.checked })}
-									/>
-									Habilitado
-								</label>
+										className={
+											'rounded-md border px-2 py-1 text-xs disabled:opacity-50 ' + graveStatusUi(g.status).className
+										}
+									>
+										<option value="available">available</option>
+										<option value="reserved">reserved</option>
+										<option value="occupied">occupied</option>
+										<option value="maintenance">maintenance</option>
+									</select>
+									<label className="flex items-center justify-end gap-2 text-xs text-[color:var(--text)]">
+										<input
+											type="checkbox"
+											checked={g.is_enabled !== false}
+											disabled={graveEditLoadingId === g.id}
+											onChange={(e) => updateGravePublish(g.id, { isEnabled: e.target.checked })}
+										/>
+										Habilitado
+									</label>
+									<button
+										type="button"
+										onClick={() => {
+											if (Number(locEditId) === Number(g.id)) closeLocationEditor()
+											else openLocationEditor(g)
+										}}
+										className={
+											'rounded-md border px-2 py-1 text-xs text-[color:var(--text-h)] hover:bg-[color:var(--hover)] ' +
+											(Number(locEditId) === Number(g.id)
+												? 'border-[color:var(--accent-border)] bg-[color:var(--accent-bg)]'
+												: 'border-[color:var(--border)]')
+										}
+									>
+										Ubicación
+									</button>
+								</div>
 							</div>
+
+							{Number(locEditId) === Number(g.id) ? (
+								<div className="mt-3 rounded-md border border-[color:var(--border)] bg-[color:var(--surface-2)] p-3">
+									<div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+										<div>
+											<div className="text-xs font-semibold text-[color:var(--text-h)]">Ubicación (Google Maps)</div>
+											<div className="mt-1 text-xs text-[color:var(--text)]">
+												Edita lat/lng y guarda. La vista previa se carga solo si la abres.
+											</div>
+										</div>
+										<div className="flex items-center justify-end gap-2">
+											<button
+												type="button"
+												onClick={saveLocationForEditingGrave}
+												disabled={locSaving || !editingGrave || Number(editingGrave?.id) !== Number(g.id)}
+												className="inline-flex h-10 items-center rounded-md bg-[color:var(--accent)] px-3 text-sm font-medium text-[color:var(--on-accent)] disabled:opacity-50"
+											>
+												{locSaving ? 'Guardando…' : 'Guardar'}
+											</button>
+											<button
+												type="button"
+												onClick={closeLocationEditor}
+												className="inline-flex h-10 items-center rounded-md border border-[color:var(--border)] bg-[color:var(--surface)] px-3 text-sm font-medium text-[color:var(--text-h)] hover:bg-[color:var(--hover)]"
+											>
+												Cerrar
+											</button>
+										</div>
+									</div>
+
+									<div className="mt-3 grid grid-cols-2 gap-2">
+										<input
+											value={locLat}
+											onChange={(e) => setLocLat(e.target.value)}
+											className="w-full rounded-md border border-[color:var(--border)] bg-transparent px-3 py-2 text-sm"
+											placeholder="Latitud (ej. -12.0464)"
+											inputMode="decimal"
+										/>
+										<input
+											value={locLng}
+											onChange={(e) => setLocLng(e.target.value)}
+											className="w-full rounded-md border border-[color:var(--border)] bg-transparent px-3 py-2 text-sm"
+											placeholder="Longitud (ej. -77.0428)"
+											inputMode="decimal"
+										/>
+									</div>
+									{locMsg ? <div className="mt-2 text-xs text-[color:var(--text)]">{locMsg}</div> : null}
+
+									<div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+										<div className="text-xs text-[color:var(--text)]">
+											{locInputCoords.hasBoth
+												? 'Tip: usa “Abrir” para verificar el pin exacto.'
+												: 'Para ver el mapa, completa latitud y longitud.'}
+										</div>
+										<div className="flex items-center justify-end gap-2">
+											<button
+												type="button"
+												onClick={toggleLocationMapPreview}
+												disabled={!locInputCoords.hasBoth}
+												className={
+												'inline-flex h-10 items-center rounded-md border px-3 text-sm font-medium disabled:opacity-50 ' +
+												(locMapOpen
+													? 'border-[color:var(--accent-border)] bg-[color:var(--accent-bg)] text-[color:var(--text-h)]'
+													: 'border-[color:var(--border)] bg-[color:var(--surface)] text-[color:var(--text-h)] hover:bg-[color:var(--hover)]')
+											}
+											>
+												{locMapOpen ? 'Ocultar mapa' : 'Mostrar mapa'}
+											</button>
+											{locInputCoords.hasBoth ? (
+												<a
+													href={`https://www.google.com/maps?q=${encodeURIComponent(`${locInputCoords.lat},${locInputCoords.lng}`)}`}
+													target="_blank"
+													rel="noreferrer"
+													className="inline-flex h-10 items-center rounded-md bg-[color:var(--accent)] px-3 text-sm font-medium text-[color:var(--on-accent)]"
+												>
+													Abrir
+												</a>
+											) : null}
+										</div>
+									</div>
+
+									{locMapEverOpened && locPreview ? (
+										<div className={locMapOpen ? 'mt-3' : 'mt-3 hidden'}>
+											<div className="overflow-hidden rounded-md border border-[color:var(--border)] bg-[color:var(--surface)]">
+												<iframe
+													title="Vista previa de ubicación en Google Maps"
+													src={`https://www.google.com/maps?q=${encodeURIComponent(`${locPreview.lat},${locPreview.lng}`)}&z=18&output=embed`}
+													className="block h-[280px] w-full"
+													loading="lazy"
+													referrerPolicy="no-referrer-when-downgrade"
+													allowFullScreen
+												/>
+											</div>
+											<div className="mt-2 text-xs text-[color:var(--text)]">
+												Para evitar recargas, la vista previa se fija al momento de abrirla.
+											</div>
+										</div>
+									) : null}
+								</div>
+							) : null}
 						</div>
 					))
 				)}

@@ -78,6 +78,23 @@ export function MyReservationsView({ me, onLogin, onPayReservation, filterSeed }
 		})
 	}, [items, filterQ])
 
+	const reservationStats = useMemo(() => {
+		let paid = 0
+		let pendingPay = 0
+		let pendingValidation = 0
+		for (const r of items) {
+			const price = Number(r.price_cents || 0)
+			const paidCents = Number(r.paid_cents || 0)
+			const pending = Number(r.pending_cents || 0)
+			const due = Number(r.due_cents || 0)
+			const paidDone = r.status === 'confirmed' && price > 0 && paidCents >= price
+			if (paidDone) paid += 1
+			else if (r.status === 'confirmed' && pending > 0) pendingValidation += 1
+			else if (r.status === 'confirmed' && due > 0) pendingPay += 1
+		}
+		return { total: items.length, paid, pendingPay, pendingValidation }
+	}, [items])
+
 	async function refresh() {
 		if (!me) return
 		setLoading(true)
@@ -133,8 +150,39 @@ export function MyReservationsView({ me, onLogin, onPayReservation, filterSeed }
 	}
 
 	return (
-		<div className="space-y-3">
-			<div className="text-sm font-semibold text-[color:var(--text-h)]">Mis reservas</div>
+		<div className="client-ledger-view">
+			<div className="client-ledger-head">
+				<div>
+					<div className="ui-kicker">Historial</div>
+					<h2 className="mt-1 text-lg font-semibold text-[color:var(--text-h)]">Mis reservas</h2>
+					<div className="mt-1 text-xs text-[color:var(--muted)]">Consulta el estado de tus solicitudes y pagos pendientes.</div>
+				</div>
+				<button
+					type="button"
+					onClick={refresh}
+					disabled={loading}
+					className="rounded-md border border-[color:var(--border)] px-3 py-2 text-sm font-semibold text-[color:var(--text-h)] hover:bg-[color:var(--hover)] disabled:opacity-50"
+				>
+					{loading ? 'Actualizando…' : 'Actualizar'}
+				</button>
+			</div>
+
+			<div className="client-ledger-stats">
+				<div><span>{reservationStats.total}</span><small>Total</small></div>
+				<div><span>{reservationStats.paid}</span><small>Pagadas</small></div>
+				<div><span>{reservationStats.pendingPay}</span><small>Por pagar</small></div>
+				<div><span>{reservationStats.pendingValidation}</span><small>Validación</small></div>
+			</div>
+
+			<div className="client-ledger-toolbar">
+				<input
+					value={filterQ}
+					onChange={(e) => setFilterQ(e.target.value)}
+					className="w-full rounded-md border border-[color:var(--border)] bg-transparent px-3 py-2 text-sm text-[color:var(--text-h)]"
+					placeholder="Filtrar por código, difunto, tumba o sección"
+				/>
+				<div className="client-ledger-toolbar__count">{filteredItems.length} visibles</div>
+			</div>
 
 			{loading && <div className="text-sm text-[color:var(--text)]">Cargando…</div>}
 			{error && <div className="text-sm text-red-600">{error}</div>}
@@ -148,7 +196,7 @@ export function MyReservationsView({ me, onLogin, onPayReservation, filterSeed }
 			)}
 
 			{filteredItems.length > 0 && (
-				<div className="overflow-x-auto rounded-md border border-[color:var(--border)]">
+				<div className="client-ledger-table overflow-x-auto">
 					<table className="min-w-full text-left text-sm">
 						<thead className="bg-[color:var(--surface-2)] text-xs text-[color:var(--text)]">
 							<tr>
@@ -179,8 +227,8 @@ export function MyReservationsView({ me, onLogin, onPayReservation, filterSeed }
 								return (
 									<tr key={r.id} className="border-t border-[color:var(--border)]">
 										<td className="px-3 py-2 text-[color:var(--text)]">{r.id}</td>
-										<td className="px-3 py-2 text-[color:var(--text)]">{r.reservation_code || '—'}</td>
-										<td className="px-3 py-2 text-[color:var(--text)]">{r.grave_code || '—'}</td>
+										<td className="px-3 py-2 text-[color:var(--text)]"><span className="client-code-pill">{r.reservation_code || '—'}</span></td>
+										<td className="px-3 py-2 text-[color:var(--text)]"><span className="font-semibold text-[color:var(--text-h)]">{r.grave_code || '—'}</span></td>
 										<td className="px-3 py-2 text-[color:var(--text)]">{r.sector_name || '—'}</td>
 										<td className="px-3 py-2 text-[color:var(--text)]">{r.row_number ?? '—'}</td>
 										<td className="px-3 py-2 text-[color:var(--text)]">{r.col_number ?? '—'}</td>
@@ -188,7 +236,9 @@ export function MyReservationsView({ me, onLogin, onPayReservation, filterSeed }
 										<td className="px-3 py-2 text-[color:var(--text)]">{formatDate(r.reserved_from)}</td>
 										<td className="px-3 py-2 text-[color:var(--text)]">{formatDate(r.reserved_to)}</td>
 										<td className="px-3 py-2 text-[color:var(--text)]">
-											{paidDone ? 'Pagado' : pendingValidation ? 'Pendiente validación' : pendingPay ? 'Pendiente pagar' : prettyStatus(r.status)}
+											<span className={'client-status-chip ' + (paidDone ? 'client-status-chip--ok' : pendingPay || pendingValidation ? 'client-status-chip--warn' : '')}>
+												{paidDone ? 'Pagado' : pendingValidation ? 'Pendiente validación' : pendingPay ? 'Pendiente pagar' : prettyStatus(r.status)}
+											</span>
 										</td>
 										<td className="px-3 py-2 text-[color:var(--text)]">
 											{pendingPay ? formatMoney(due, 'PEN') : pendingValidation ? formatMoney(pending, 'PEN') : '—'}
@@ -198,7 +248,7 @@ export function MyReservationsView({ me, onLogin, onPayReservation, filterSeed }
 											{pendingPay && r.reservation_code ? (
 												<button
 													onClick={() => onPayReservation?.(r.reservation_code)}
-													className="rounded-md border border-[color:var(--border)] px-3 py-2 text-xs font-medium text-[color:var(--text-h)] hover:bg-[color:var(--hover)]"
+													className="rounded-md bg-[color:var(--accent)] px-3 py-2 text-xs font-semibold text-[color:var(--on-accent)]"
 												>
 													Pagar
 												</button>
