@@ -17,7 +17,8 @@ El sistema está diseñado bajo arquitectura cliente-servidor, facilitando la ce
 
 ## 📦 Instalación
 
-### 1. Instalar dependencias
+### 1. Instalar dependencia
+
 
 Desde la raíz del proyecto:
 
